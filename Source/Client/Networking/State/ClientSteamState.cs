@@ -7,11 +7,11 @@ namespace Multiplayer.Client
     {
         private readonly string username;
 
-        public ClientSteamState(SteamBaseConn conn, string username) : base(conn)
+        public ClientSteamState(SteamSocketClientConn conn, string username) : base(conn)
         {
             this.username = username;
-            // The flag byte is: joinPacket | reliable | hasChannel
-            conn.SendRawSteam(ByteWriter.GetBytes((byte)0b111, conn.recvChannel), true);
+            // With ISteamNetworkingSockets the connection request is the handshake; we just wait for the host's
+            // Server_SteamAccept, which it sends right after AcceptConnection.
         }
 
         [PacketHandler(Packets.Server_SteamAccept)]

@@ -561,7 +561,7 @@ namespace Multiplayer.Client
 
         public static INetManager StartSteamP2PManager(MultiplayerServer server, ServerSettings settings)
         {
-            var man = SteamP2PNetManager.Create(server);
+            var man = SteamSocketsNetManager.Create(server);
             if (man != null) return man;
 
             Messages.Message("Failed to start Steam networking", MessageTypeDefOf.RejectInput, false);
