@@ -62,7 +62,7 @@ public class SteamConnector(CSteamID remoteId) : IConnector
     public string GetConnectionString() => $"{Prefix}:{remoteId}";
 
     public (ConnectionBase, BaseConnectingWindow) Connect(string username) =>
-        (new SteamClientConn(remoteId, username), new SteamConnectingWindow(remoteId));
+        (new SteamSocketClientConn(remoteId, username), new SteamConnectingWindow(remoteId));
 }
 
 public class LiteNetConnector(string address, int port) : IConnector
