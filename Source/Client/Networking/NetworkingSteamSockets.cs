@@ -237,12 +237,24 @@ namespace Multiplayer.Client.Networking
 
         public static readonly SteamNetworkingConfigValue_t[] ConfigOptions =
         {
-            new()
-            {
-                m_eValue = ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_TimeoutInitial,
-                m_eDataType = ESteamNetworkingConfigDataType.k_ESteamNetworkingConfig_Int32,
-                m_val = new SteamNetworkingConfigValue_t.OptionValue { m_int32 = AcceptPromptTimeoutMs }
-            }
+            Int32Option(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_TimeoutInitial, AcceptPromptTimeoutMs),
+            // The world download is sent as one synchronous burst of reliable fragments (up to
+            // MaxFragmentPacketTotalSize). The default send buffer is only 512KB, and once it fills
+            // SendMessageToConnection fails with LimitExceeded, silently dropping fragments and corrupting
+            // the packet stream (the client then hangs mid-download and chokes on the next packet).
+            // Size the buffer so a full burst always fits.
+            Int32Option(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_SendBufferSize,
+                2 * ConnectionBase.MaxFragmentPacketTotalSize),
+            // The default send rate cap (1MB/s) would make world downloads crawl; the old ISteamNetworking
+            // API applied no such cap.
+            Int32Option(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_SendRateMax, 16 * 1024 * 1024),
+        };
+
+        private static SteamNetworkingConfigValue_t Int32Option(ESteamNetworkingConfigValue key, int value) => new()
+        {
+            m_eValue = key,
+            m_eDataType = ESteamNetworkingConfigDataType.k_ESteamNetworkingConfig_Int32,
+            m_val = new SteamNetworkingConfigValue_t.OptionValue { m_int32 = value }
         };
 
         private static Callback<SteamNetConnectionStatusChangedCallback_t> connStatusChanged;
