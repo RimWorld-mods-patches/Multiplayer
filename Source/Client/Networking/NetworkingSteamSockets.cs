@@ -37,13 +37,23 @@ namespace Multiplayer.Client.Networking
                     conn, pin.AddrOfPinnedObject(), (uint)raw.Length, flags, out _);
 
                 if (result != EResult.k_EResultOK)
+                {
                     ServerLog.Error($"Failed to send Steam message ({result}, len {raw.Length}) to {remoteId}");
+
+                    // A lost reliable message leaves a permanent hole in the packet stream (e.g. a dropped
+                    // fragment) that the peer can't recover from, so surface it as a disconnect instead of
+                    // limping along until deserialization breaks.
+                    if (reliable)
+                        OnReliableSendFailed();
+                }
             }
             finally
             {
                 pin.Free();
             }
         }
+
+        protected abstract void OnReliableSendFailed();
 
         // A goodbye is only ever non-null server-side. CloseConnection with linger flushes queued reliable data
         // before tearing the connection down, so the reason reaches the peer without the deferred-close hack the
@@ -102,6 +112,11 @@ namespace Multiplayer.Client.Networking
             });
         }
 
+        // A send can fail from inside a packet handler; defer so the session teardown isn't reentrant.
+        // OnClosed also closes our connection handle via StopMultiplayer -> Close -> OnClose.
+        protected override void OnReliableSendFailed() =>
+            OnMainThread.Enqueue(() => OnClosed(0));
+
         // Fallback shown only when the app-level goodbye never arrived. If the connection carried an app-range
         // end reason we recover the MpDisconnectReason from it; otherwise we show a timeout/generic message.
         public void OnClosed(int endReason)
@@ -155,6 +170,25 @@ namespace Multiplayer.Client.Networking
             // Use the connection's own ping instead of the old keepalive-timer estimate.
             if (SteamP2PIntegration.TryGetRealTimeStatus(conn, out var status) && status.m_nPing >= 0)
                 Latency = status.m_nPing;
+        }
+
+        // Sends can happen mid-iteration over playerManager.Players (e.g. SendToPlaying), so the teardown
+        // is deferred to the queue. SetDisconnected's Disconnected-state guard makes this idempotent; no
+        // goodbye is sent since the reliable stream is already broken.
+        protected override void OnReliableSendFailed()
+        {
+            var server = serverPlayer.Server;
+            server.Enqueue(() =>
+            {
+                if (State == ConnectionStateEnum.Disconnected) return;
+
+                var handle = conn;
+                server.playerManager.SetDisconnected(this, MpDisconnectReason.ClientLeft);
+
+                if (handle != HSteamNetConnection.Invalid)
+                    SteamNetworkingSockets.CloseConnection(handle, 0, "", false);
+                conn = HSteamNetConnection.Invalid;
+            });
         }
     }
 
