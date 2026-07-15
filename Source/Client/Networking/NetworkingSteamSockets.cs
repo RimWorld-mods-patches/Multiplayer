@@ -279,9 +279,8 @@ namespace Multiplayer.Client.Networking
             // Size the buffer so a full burst always fits.
             Int32Option(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_SendBufferSize,
                 2 * ConnectionBase.MaxFragmentPacketTotalSize),
-            // The default send rate cap (1MB/s) would make world downloads crawl; the old ISteamNetworking
-            // API applied no such cap.
-            Int32Option(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_SendRateMax, 16 * 1024 * 1024),
+            // TEST: leave SendRateMax at Steam's default (~1MB/s) to measure download behavior
+            // without the raised rate cap.
         };
 
         private static SteamNetworkingConfigValue_t Int32Option(ESteamNetworkingConfigValue key, int value) => new()
