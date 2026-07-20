@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - dev
+      - steam-send-rate-test
     paths-ignore:
       - 'README.md'
 
@@ -23,6 +24,15 @@ jobs:
       with:
         submodules: recursive
       
+    - name: Identify commit
+      run: |
+        echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+        {
+          echo "COMMIT_SUBJECT<<COMMIT_SUBJECT_EOF"
+          git log -1 --pretty=%s
+          echo "COMMIT_SUBJECT_EOF"
+        } >> "$GITHUB_ENV"
+
     - name: Setup Dotnet
       uses: actions/setup-dotnet@v4
       with:
@@ -53,7 +63,7 @@ jobs:
 
     - name: Package files
       run: |
-        sed -i "s/<name>\(.*\)<\/name>\$/<name>\1 [Continuous]<\/name>/" About/About.xml
+        sed -i "s/<name>\(.*\)<\/name>\$/<name>\1 [Continuous $SHORT_SHA]<\/name>/" About/About.xml
         mkdir -p output/Multiplayer
         mv About/ Assemblies/ AssembliesCustom/ Defs/ Languages/ Textures/ output/Multiplayer
         cd output/
@@ -67,13 +77,35 @@ jobs:
         name: Multiplayer-beta
         path: output/
     
-    - name: Clean up last release
+    # One release per commit, so builds of different commits can coexist and be
+    # compared. Both sides of a session must run the same build; the tag, title and
+    # notes all name the commit so the running build can be matched against the
+    # "Multiplayer version 0.11.5+<hash>" line each client logs at startup.
+    - name: Compose release notes
+      run: |
+        {
+          echo "**Commit:** \`${{ github.sha }}\`"
+          echo ""
+          echo "**Subject:** $COMMIT_SUBJECT"
+          echo ""
+          echo "**Branch:** \`${{ github.ref_name }}\`"
+          echo ""
+          echo "In-game this build reports \`Multiplayer version 0.11.5+$SHORT_SHA\`."
+          echo ""
+          echo "---"
+          echo ""
+          cat .github/workflows/alpha-notes.md
+        } > release-notes.md
+
+    # Re-running the workflow for the same commit replaces that commit's release
+    # and leaves every other commit's release untouched.
+    - name: Clean up previous release for this commit
       continue-on-error: true
       run: |
-        gh release delete --cleanup-tag --yes "continuous"
-    
+        gh release delete --cleanup-tag --yes "continuous-$SHORT_SHA"
+
     - name: Upload new release
       run: |
-        gh release create --target "${{ github.sha }}" --title "Continuous" --notes-file ".github/workflows/alpha-notes.md" --draft "continuous"
-        gh release upload "continuous" Multiplayer-beta.zip Server-beta.zip
-        gh release edit "continuous" --draft=false
+        gh release create --target "${{ github.sha }}" --title "Continuous $SHORT_SHA — $COMMIT_SUBJECT" --notes-file "release-notes.md" --draft "continuous-$SHORT_SHA"
+        gh release upload "continuous-$SHORT_SHA" Multiplayer-beta.zip Server-beta.zip
+        gh release edit "continuous-$SHORT_SHA" --draft=false
