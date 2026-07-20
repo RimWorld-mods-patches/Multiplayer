@@ -279,9 +279,12 @@ namespace Multiplayer.Client.Networking
             // Size the buffer so a full burst always fits.
             Int32Option(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_SendBufferSize,
                 2 * ConnectionBase.MaxFragmentPacketTotalSize),
-            // EXPERIMENT (send rate variant 1/2): no send rate options at all, leaving Steam's own
-            // defaults and its bandwidth estimation in charge. Measures how slow a world download
-            // actually is under the default cap, as the baseline the tuned variant is compared against.
+            // EXPERIMENT (send rate variant 2/2): floor the rate at 4MB/s so Steam's bandwidth
+            // estimation cannot throttle a world download down to a crawl while it probes, and cap
+            // it at 16MB/s. The floor disables backoff below it, so a genuinely narrow link may see
+            // loss here where variant 1 would have adapted.
+            Int32Option(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_SendRateMin, 4 * 1024 * 1024),
+            Int32Option(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_SendRateMax, 16 * 1024 * 1024),
         };
 
         private static SteamNetworkingConfigValue_t Int32Option(ESteamNetworkingConfigValue key, int value) => new()
