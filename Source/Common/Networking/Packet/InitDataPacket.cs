@@ -108,14 +108,18 @@ public record struct ClientInitDataPacket : IPacket
     {
         public string path;
         public int hash;
-        public string version;   // Assembly version for .dll files, empty otherwise
-        public long writeTime;   // Last write time, UTC ticks
+        public string assemblyVersion; // .dll files only, empty otherwise
+        public string fileVersion;     // .dll files only, empty otherwise
+        public string productVersion;  // .dll files only, empty otherwise
+        public long writeTime;         // Last write time, UTC ticks
 
         public void Bind(PacketBuffer buf)
         {
             buf.Bind(ref path);
             buf.Bind(ref hash);
-            buf.Bind(ref version);
+            buf.Bind(ref assemblyVersion);
+            buf.Bind(ref fileVersion);
+            buf.Bind(ref productVersion);
             buf.Bind(ref writeTime);
         }
     }

@@ -454,8 +454,8 @@ namespace Multiplayer.Client
             _ => Color.white
         };
 
-        // Builds the tooltip for a leaf file node: assembly version (for .dll) and last-write
-        // time on each side that has the file.
+        // Builds the tooltip for a leaf file node: assembly/file/product versions (for .dll) and
+        // last-write time on each side that has the file.
         private string BuildFileTip(Node n)
         {
             var isDll = n.relPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
@@ -466,12 +466,18 @@ namespace Multiplayer.Client
                 var f = file.Value;
 
                 var lines = new List<string>();
+
+                void VersionLine(string labelKey, string value)
+                {
+                    var shown = string.IsNullOrEmpty(value) ? (string)"MpMismatchFileUnknown".Translate() : value;
+                    lines.Add("  " + (string)labelKey.Translate() + ": " + shown);
+                }
+
                 if (isDll)
                 {
-                    var versionStr = string.IsNullOrEmpty(f.version)
-                        ? (string)"MpMismatchFileUnknown".Translate()
-                        : f.version;
-                    lines.Add("  " + (string)"MpMismatchFileVersion".Translate() + ": " + versionStr);
+                    VersionLine("MpMismatchFileAssemblyVersion", f.assemblyVersion);
+                    VersionLine("MpMismatchFileVersion", f.fileVersion);
+                    VersionLine("MpMismatchFileProductVersion", f.productVersion);
                 }
 
                 if (f.writeTime != 0)
