@@ -126,7 +126,7 @@ namespace Multiplayer.Client
             try
             {
                 var version = AssemblyName.GetAssemblyName(path).Version;
-                return version == null || version == new Version(0, 0, 0, 0) ? null : version.ToString();
+                return version == null || version == new System.Version(0, 0, 0, 0) ? null : version.ToString();
             }
             catch
             {
