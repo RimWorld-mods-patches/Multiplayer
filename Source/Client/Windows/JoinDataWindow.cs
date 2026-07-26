@@ -471,11 +471,11 @@ namespace Multiplayer.Client
                     var versionStr = string.IsNullOrEmpty(f.version)
                         ? (string)"MpMismatchFileUnknown".Translate()
                         : f.version;
-                    lines.Add("  " + (string)"MpMismatchFileVersion".Translate(versionStr));
+                    lines.Add("  " + (string)"MpMismatchFileVersion".Translate() + ": " + versionStr);
                 }
 
                 if (f.writeTime != 0)
-                    lines.Add("  " + (string)"MpMismatchFileModified".Translate(FormatWriteTime(f.writeTime)));
+                    lines.Add("  " + (string)"MpMismatchFileModified".Translate() + ": " + FormatWriteTime(f.writeTime));
 
                 return lines.Any() ? string.Join("\n", lines) : null;
             }
