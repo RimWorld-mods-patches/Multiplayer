@@ -103,11 +103,10 @@ namespace Multiplayer.Client
             // common mods are considered out of order.
             var inOrder = LongestCommonOrder(serverKeys, localKeys);
 
+            // Server list only flags missing mods; wrong-order is highlighted on the client list
+            // only, since reordering is something the client resolves locally.
             foreach (var k in serverKeys)
-                serverModStatus[k] =
-                    !localSet.Contains(k) ? NodeStatus.Missing :
-                    !inOrder.Contains(k) ? NodeStatus.Modified :
-                    NodeStatus.None;
+                serverModStatus[k] = localSet.Contains(k) ? NodeStatus.None : NodeStatus.Missing;
 
             foreach (var k in localKeys)
                 localModStatus[k] =
@@ -762,7 +761,7 @@ namespace Multiplayer.Client
                     new Rect(0, 0, btnsWidth, 66f),
                     $"<color=#{RedStr}>({"MpMismatchTreeMissing".Translate()})</color>\n" +
                     $"<color=#{OrangeStr}>({"MpMismatchTreeAdded".Translate()})</color>\n" +
-                    $"<color=#{YellowStr}>({"MpMismatchTreeModified".Translate()})</color>",
+                    $"<color=#{YellowStr}>({"MpMismatchModListWrongOrder".Translate()})</color>",
                     GameFont.Tiny,
                     TextAnchor.MiddleCenter
                 );
