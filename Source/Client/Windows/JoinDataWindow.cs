@@ -31,6 +31,8 @@ namespace Multiplayer.Client
             public string name;
             public string id;
             public string path;
+            public string modId;  // Set on leaf file nodes: the owning mod's package id
+            public string relPath; // Set on leaf file nodes: the file's relative path
             public int depth;
             public Node parent;
             public List<Node> children = new();
@@ -174,6 +176,8 @@ namespace Multiplayer.Client
             }
 
             cur.status = status;
+            cur.relPath = path;
+            cur.modId = root.id; // null for the configs tree (root has no id)
             root.paths.Add(path);
 
             if (root.childrenPerStatus != null)
@@ -450,6 +454,56 @@ namespace Multiplayer.Client
             _ => Color.white
         };
 
+        // Builds the tooltip for a leaf file node: assembly version (for .dll) and last-write
+        // time on each side that has the file.
+        private string BuildFileTip(Node n)
+        {
+            var isDll = n.relPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
+
+            string Side(ModFile? file)
+            {
+                if (file == null) return null;
+                var f = file.Value;
+
+                var lines = new List<string>();
+                if (isDll)
+                {
+                    var versionStr = string.IsNullOrEmpty(f.version)
+                        ? (string)"MpMismatchFileUnknown".Translate()
+                        : f.version;
+                    lines.Add("  " + (string)"MpMismatchFileVersion".Translate(versionStr));
+                }
+
+                if (f.writeTime != 0)
+                    lines.Add("  " + (string)"MpMismatchFileModified".Translate(FormatWriteTime(f.writeTime)));
+
+                return lines.Any() ? string.Join("\n", lines) : null;
+            }
+
+            var tip = "";
+            var server = Side(remote.remoteFiles.GetOrDefault(n.modId, n.relPath));
+            if (server != null)
+                tip += "MpMismatchServerSide".Translate() + "\n" + server;
+
+            var yours = Side(filesForUI.GetOrDefault(n.modId, n.relPath));
+            if (yours != null)
+                tip += (tip.Length > 0 ? "\n\n" : "") + "MpMismatchClientSide".Translate() + "\n" + yours;
+
+            return tip;
+        }
+
+        private static string FormatWriteTime(long utcTicks)
+        {
+            try
+            {
+                return new DateTime(utcTicks, DateTimeKind.Utc).ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return "?";
+            }
+        }
+
         private void DrawTreeTab(Rect inRect, string labelKey, Node root, Action refresh, bool showCounts, string desc, string treeDescKey)
         {
             var listRect = new Rect(0, 20f, 440f, 220f);
@@ -514,6 +568,15 @@ namespace Multiplayer.Client
                         nodeTip += "MpMismatchFileOpenPath".Translate();
 
                         TooltipHandler.TipRegion(labelRect, () => nodeTip, 13624604);
+                    }
+                    else if (n.modId != null && n.relPath != null)
+                    {
+                        var node = n;
+                        TooltipHandler.TipRegion(
+                            labelRect,
+                            () => BuildFileTip(node),
+                            Gen.HashCombineInt(node.relPath.GetHashCode(), node.modId.GetHashCode() ^ 748210)
+                        );
                     }
 
                     if (Widgets.ButtonInvisible(labelRect))
