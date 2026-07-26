@@ -68,13 +68,11 @@ jobs:
         path: output/
     
     - name: Clean up last release
-      if: github.ref == 'refs/heads/dev'
       continue-on-error: true
       run: |
         gh release delete --cleanup-tag --yes "continuous"
 
     - name: Upload new release
-      if: github.ref == 'refs/heads/dev'
       run: |
         gh release create --target "${{ github.sha }}" --title "Continuous" --notes-file ".github/workflows/alpha-notes.md" --draft "continuous"
         gh release upload "continuous" Multiplayer-beta.zip Server-beta.zip
