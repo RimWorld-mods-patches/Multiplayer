@@ -26,19 +26,19 @@ jobs:
     - name: Setup Dotnet
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 9.x
+        dotnet-version: 10.x
       
     - name: Install Mod Dependencies
       run: dotnet restore ${{ env.SLN_PATH }}
 
     - name: Build Mod
-      run: dotnet build ${{ env.SLN_PATH }} --configuration Release --no-restore
+      run: dotnet build ${{ env.SLN_PATH }} --configuration Debug --no-restore
 
     - name: Publish Server (Windows)
-      run: dotnet publish ${{ env.SLN_PATH }}Server/Server.csproj --configuration Release --runtime win-x64 --self-contained false -p:UseAppHost=true -o output/Server/Windows
+      run: dotnet publish ${{ env.SLN_PATH }}Server/Server.csproj --configuration Debug --runtime win-x64 --self-contained false -p:UseAppHost=true -o output/Server/Windows
 
     - name: Publish Server (Linux)
-      run: dotnet publish ${{ env.SLN_PATH }}Server/Server.csproj --configuration Release --runtime linux-x64 --self-contained false -p:UseAppHost=true -o output/Server/Linux
+      run: dotnet publish ${{ env.SLN_PATH }}Server/Server.csproj --configuration Debug --runtime linux-x64 --self-contained false -p:UseAppHost=true -o output/Server/Linux
 
     - name: Add Server Launchers
       run: |
@@ -68,11 +68,13 @@ jobs:
         path: output/
     
     - name: Clean up last release
+      if: github.ref == 'refs/heads/dev'
       continue-on-error: true
       run: |
         gh release delete --cleanup-tag --yes "continuous"
-    
+
     - name: Upload new release
+      if: github.ref == 'refs/heads/dev'
       run: |
         gh release create --target "${{ github.sha }}" --title "Continuous" --notes-file ".github/workflows/alpha-notes.md" --draft "continuous"
         gh release upload "continuous" Multiplayer-beta.zip Server-beta.zip
