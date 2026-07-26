@@ -80,6 +80,80 @@ namespace Multiplayer.Client
         private void CheckModLists()
         {
             modListDiff = remote.CompareMods(JoinData.activeModsSnapshot);
+            ComputeModListStatuses();
+        }
+
+        // Per-mod diff status, keyed by (packageId, source) to match RemoteData.CompareMods.
+        private Dictionary<(string, ContentSource), NodeStatus> serverModStatus = new();
+        private Dictionary<(string, ContentSource), NodeStatus> localModStatus = new();
+
+        private void ComputeModListStatuses()
+        {
+            serverModStatus.Clear();
+            localModStatus.Clear();
+
+            var serverKeys = remote.remoteMods.Select(m => (m.packageId, m.source)).ToList();
+            var localKeys = JoinData.activeModsSnapshot.Select(m => (m.PackageIdNonUnique, m.Source)).ToList();
+            var serverSet = serverKeys.ToHashSet();
+            var localSet = localKeys.ToHashSet();
+
+            // Mods present on both sides in the same relative load order. The rest of the
+            // common mods are considered out of order.
+            var inOrder = LongestCommonOrder(serverKeys, localKeys);
+
+            foreach (var k in serverKeys)
+                serverModStatus[k] =
+                    !localSet.Contains(k) ? NodeStatus.Missing :
+                    !inOrder.Contains(k) ? NodeStatus.Modified :
+                    NodeStatus.None;
+
+            foreach (var k in localKeys)
+                localModStatus[k] =
+                    !serverSet.Contains(k) ? NodeStatus.Added :
+                    !inOrder.Contains(k) ? NodeStatus.Modified :
+                    NodeStatus.None;
+        }
+
+        // Longest subsequence of mods that keeps the same relative order in both lists.
+        // Mods are unique within a load order, so this reduces to a longest-increasing-subsequence
+        // over the local positions of the common mods (taken in server order).
+        private static HashSet<T> LongestCommonOrder<T>(List<T> server, List<T> local)
+        {
+            var localPos = new Dictionary<T, int>();
+            for (int i = 0; i < local.Count; i++)
+                localPos[local[i]] = i;
+
+            var items = new List<(T key, int pos)>();
+            foreach (var k in server)
+                if (localPos.TryGetValue(k, out var p))
+                    items.Add((k, p));
+
+            int n = items.Count;
+            var result = new HashSet<T>();
+            if (n == 0) return result;
+
+            var dp = new int[n];   // length of the best subsequence ending at i
+            var prev = new int[n]; // predecessor index in that subsequence
+            int bestIdx = 0;
+
+            for (int i = 0; i < n; i++)
+            {
+                dp[i] = 1;
+                prev[i] = -1;
+                for (int j = 0; j < i; j++)
+                    if (items[j].pos < items[i].pos && dp[j] + 1 > dp[i])
+                    {
+                        dp[i] = dp[j] + 1;
+                        prev[i] = j;
+                    }
+                if (dp[i] > dp[bestIdx])
+                    bestIdx = i;
+            }
+
+            for (int i = bestIdx; i >= 0; i = prev[i])
+                result.Add(items[i].key);
+
+            return result;
         }
 
         private void AddNodesForPath(string path, Node root, NodeStatus status)
@@ -368,6 +442,14 @@ namespace Multiplayer.Client
         private const string OrangeStr = "ff8844";
         private const string YellowStr = "ffff44";
 
+        static Color StatusColor(NodeStatus status) => status switch
+        {
+            NodeStatus.Added => Orange,
+            NodeStatus.Missing => Red,
+            NodeStatus.Modified => Yellow,
+            _ => Color.white
+        };
+
         private void DrawTreeTab(Rect inRect, string labelKey, Node root, Action refresh, bool showCounts, string desc, string treeDescKey)
         {
             var listRect = new Rect(0, 20f, 440f, 220f);
@@ -445,14 +527,7 @@ namespace Multiplayer.Client
                     MpUI.Label(
                         labelRect.MinX(5 + 15f * n.depth),
                         n.DisplayName,
-                        color:
-                        n.status switch
-                        {
-                            NodeStatus.Added => Orange,
-                            NodeStatus.Missing => Red,
-                            NodeStatus.Modified => Yellow,
-                            _ => Color.white
-                        }
+                        color: StatusColor(n.status)
                     );
 
                     if (showCounts && n.childrenPerStatus != null)
@@ -537,6 +612,11 @@ namespace Multiplayer.Client
                 MpUI.Label(new Rect(topLeft + new Vector2(21, 0), new(selectorWidth - 21f - 16f, modLabelHeight + 2)), name, color: color);
             }
 
+            Color ServerColor(ModInfo m) =>
+                StatusColor(serverModStatus.TryGetValue((m.packageId, m.source), out var s) ? s : NodeStatus.None);
+            Color LocalColor(ModMetaData m) =>
+                StatusColor(localModStatus.TryGetValue((m.PackageIdNonUnique, m.Source), out var s) ? s : NodeStatus.None);
+
             GUI.BeginGroup(mods1Rect);
             {
                 MpUI.Label(new Rect(0, 0, selectorWidth, 20f), "MpMismatchServerMods".Translate(), GameFont.Tiny, TextAnchor.MiddleCenter);
@@ -556,7 +636,7 @@ namespace Multiplayer.Client
                                 m.name,
                                 m.packageId,
                                 m.source,
-                                m.Installed ? Color.white : Red,
+                                ServerColor(m),
                                 new Vector2(modScrollLeft.x, selectorHeight + modLabelHeight)
                             );
                             i++;
@@ -589,7 +669,7 @@ namespace Multiplayer.Client
                                 m.Name,
                                 m.PackageIdNonUnique,
                                 m.Source,
-                                Color.white,
+                                LocalColor(m),
                                 new Vector2(modScrollRight.x, selectorHeight + modLabelHeight)
                             );
                             i++;
@@ -608,6 +688,16 @@ namespace Multiplayer.Client
 
             GUI.BeginGroup(mods3Rect);
             {
+                Text.CurFontStyle.richText = true;
+                MpUI.Label(
+                    new Rect(0, 0, btnsWidth, 66f),
+                    $"<color=#{RedStr}>({"MpMismatchTreeMissing".Translate()})</color>\n" +
+                    $"<color=#{OrangeStr}>({"MpMismatchTreeAdded".Translate()})</color>\n" +
+                    $"<color=#{YellowStr}>({"MpMismatchTreeModified".Translate()})</color>",
+                    GameFont.Tiny,
+                    TextAnchor.MiddleCenter
+                );
+
                 var notInstalled = remote.remoteMods.Where(m => !m.Installed);
                 var notInstalledNotOnSteam = notInstalled.Where(m => !m.CanSubscribe);
                 var btns = new Rect(0, 0, btnsWidth, 35f * 2 + 10f).CenterOn(new Rect(0, 0, btnsWidth, selectorHeight));
