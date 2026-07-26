@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using Multiplayer.Client.Util;
 using Multiplayer.Common;
@@ -33,6 +34,8 @@ namespace Multiplayer.Client
                     {
                         path = pathToFilePair.Value.relPath,
                         hash = pathToFilePair.Value.hash,
+                        version = pathToFilePair.Value.version ?? "",
+                        writeTime = pathToFilePair.Value.writeTime,
                     })
                     .ToList();
 
@@ -101,17 +104,34 @@ namespace Multiplayer.Client
                 foreach (var asm in MultiplayerData.GetModAssemblies(contentPack))
                 {
                     var relPath = asm.FullName.RemovePrefix(contentPack.RootDir).NormalizePath();
-                    fileDict.Add(modId, new ModFile(asm.FullName, relPath, asm.CRC32()));
+                    fileDict.Add(modId, new ModFile(asm.FullName, relPath, asm.CRC32(),
+                        ReadAssemblyVersion(asm.FullName), asm.LastWriteTimeUtc.Ticks));
                 }
 
                 foreach (var xmlFile in GetModDefsAndPatches(contentPack))
                 {
                     var relPath = xmlFile.FullName.RemovePrefix(contentPack.RootDir).NormalizePath();
-                    fileDict.Add(modId, new ModFile(xmlFile.FullName, relPath, xmlFile.CRC32()));
+                    fileDict.Add(modId, new ModFile(xmlFile.FullName, relPath, xmlFile.CRC32(),
+                        null, xmlFile.LastWriteTimeUtc.Ticks));
                 }
             }
 
             return fileDict;
+        }
+
+        // Reads the assembly version of a .dll without loading it into the app domain.
+        // Returns null for native/unreadable DLLs or an unset (0.0.0.0) version.
+        private static string ReadAssemblyVersion(string path)
+        {
+            try
+            {
+                var version = AssemblyName.GetAssemblyName(path).Version;
+                return version == null || version == new Version(0, 0, 0, 0) ? null : version.ToString();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public static IEnumerable<FileInfo> GetModDefsAndPatches(ModContentPack mod)
@@ -199,7 +219,8 @@ namespace Multiplayer.Client
                 foreach (var modFile in mod.files)
                 {
                     var absPath = modMeta == null ? null : Path.Combine(modMeta.RootDir.FullName, modFile.path);
-                    remoteInfo.remoteFiles.Add(modInfo.packageId, new ModFile(absPath, modFile.path, modFile.hash));
+                    remoteInfo.remoteFiles.Add(modInfo.packageId, new ModFile(absPath, modFile.path, modFile.hash,
+                        string.IsNullOrEmpty(modFile.version) ? null : modFile.version, modFile.writeTime));
                 }
 
                 if (mod.config.HasValue)
@@ -276,12 +297,16 @@ namespace Multiplayer.Client
         public bool CanSubscribe => steamId != 0;
     }
 
-    public struct ModFile(string absPath, string relPath, int hash)
+    public struct ModFile(string absPath, string relPath, int hash, string version = null, long writeTime = 0)
     {
         public string absPath = absPath?.NormalizePath(); // Can be null on the remote side
         public string relPath = relPath.NormalizePath();
         public int hash = hash;
+        public string version = version; // Assembly version for .dll files, null otherwise
+        public long writeTime = writeTime; // Last write time, UTC ticks (0 if unknown)
 
+        // Equality stays on relPath + hash only: version/write time are display metadata and
+        // must not affect the file diff (content changes are already reflected by the hash).
         public bool Equals(ModFile other) =>
             relPath == other.relPath && hash == other.hash;
 
