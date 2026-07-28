@@ -40,11 +40,18 @@ Tracked on `integration`, must never reach an upstream PR:
 
 ## Environment
 
-- **No local `dotnet`/`msbuild`/`mono`.** Build and test through the `docker-build` skill.
-  Do not suggest bare `dotnet build`.
-- **No `gh` CLI and no GitHub token.** Never attempt PR or issue creation via `gh` or the
-  API — produce prefilled GitHub URLs for the user to click.
-- Shell is `fish`, not bash. Watch for `*` glob expansion differences in ad-hoc commands.
+Machine-dependent — **check, do not assume**. The maintainer's macOS box has none of the
+following, but other contributors may.
+
+- **If there is no local `dotnet`/`msbuild`/`mono`** (`which dotnet`), build and test
+  through the `docker-build` skill instead of suggesting a bare `dotnet build`. Where a
+  local SDK exists, use it — note that `Source/SourceGen` needs Roslyn 5.x, so SDK 9 fails
+  with `CS9057`; see the `docker-build` skill for the full version constraints.
+- **If `gh` is missing or unauthenticated** (`gh auth status`), produce prefilled GitHub
+  URLs for the user to click. Do not fall back to raw API calls or ask for a token. Where
+  `gh` works, `gh pr create` / `gh issue create` is the better path.
+- **Shell varies** (`fish` for the maintainer, not bash). Glob and quoting behavior differ —
+  e.g. an unmatched `*` is a hard error in fish, not a literal pass-through.
 
 ## Repo hygiene
 

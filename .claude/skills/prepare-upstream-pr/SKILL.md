@@ -10,8 +10,8 @@ Turns the current feature branch into a single squashed commit on top of the mai
 issue (dependencies found).
 
 The remote/branch model (`origin` = upstream, `fork` = ours, `dev` / `integration` / `pr/*`),
-the fork-only-files list, and the no-`gh`/no-`dotnet` constraints are in **`CLAUDE.md`** at
-the repo root. This skill assumes them; read it if it is not already in context.
+the fork-only-files list, and the tooling-availability notes are in **`CLAUDE.md`** at the
+repo root. This skill assumes them; read it if it is not already in context.
 
 The one fact this skill turns on: `dev..integration` is the **fork-only backlog**, and a
 feature branch is upstreamable as-is only if it does not depend on that backlog.
@@ -139,6 +139,9 @@ whether a PR already points at it.
 
 ### 5. Report
 
+Never open the PR or file the issue unprompted — the user reviews first. With a working
+`gh`, offer the exact `gh pr create` / `gh issue create` command; otherwise give the URL.
+
 **No dependencies** — give the cross-fork PR link:
 
 ```
@@ -147,8 +150,8 @@ https://github.com/rwmt/Multiplayer/compare/dev...romangr:Multiplayer:pr/<topic>
 
 State the commit subject, files touched, and that it builds against `dev`.
 
-**Dependencies found** — do *not* suggest the PR link as ready. Give a prefilled issue URL
-on the **fork** (`romangr/Multiplayer`), since this is our own tracking, and print the title
+**Dependencies found** — do *not* suggest the PR link as ready. Give a prefilled issue on
+the **fork** (`romangr/Multiplayer`), since this is our own tracking, and print the title
 and body as plain text too so the user can paste them if the URL is unwieldy.
 
 Build the URL with proper encoding:
