@@ -9,24 +9,12 @@ Turns the current feature branch into a single squashed commit on top of the mai
 `dev`, pushed to the fork, plus either a PR link (no fork-only dependencies) or a tracking
 issue (dependencies found).
 
-## Repository model
+The remote/branch model (`origin` = upstream, `fork` = ours, `dev` / `integration` / `pr/*`),
+the fork-only-files list, and the no-`gh`/no-`dotnet` constraints are in **`CLAUDE.md`** at
+the repo root. This skill assumes them; read it if it is not already in context.
 
-| Ref | Meaning |
-| --- | --- |
-| `origin` | **Upstream**, `rwmt/Multiplayer`. Not the fork — the name is historical. |
-| `fork` | **The fork**, `romangr/Multiplayer`. |
-| `dev` | Mirror of mainstream `origin/dev`. Never commit here directly. |
-| `integration` | Latest integrated state of the fork: everything we run, including changes not yet upstreamed. Feature branches start here. |
-| feature branches | Branched from `integration`, merged back into `integration`. |
-
-`dev..integration` is the **fork-only backlog**: changes upstream does not have yet. A
+The one fact this skill turns on: `dev..integration` is the **fork-only backlog**, and a
 feature branch is upstreamable as-is only if it does not depend on that backlog.
-
-Do not name a branch `continuous` — upstream publishes a rolling release *tag* with that
-name and the two collide, which is why the integration branch is called `integration`.
-
-`gh` is not installed on this machine. Never try to create PRs or issues via the API or
-`gh`; produce prefilled URLs and let the user click them.
 
 ## Procedure
 
@@ -129,8 +117,8 @@ stat listed either:
 
 - `Languages` — the submodule pointer got swept in. `git -C "$WT" restore --staged Languages`,
   unless the change is genuinely about translations. Upstream does not want our submodule ref.
-- `.claude/` — fork-only tooling, tracked on `integration` and nowhere upstream.
-  `git -C "$WT" restore --staged .claude`.
+- `.claude/` or `CLAUDE.md` — fork-only tooling and notes, tracked on `integration` and
+  nowhere upstream. `git -C "$WT" restore --staged .claude CLAUDE.md`.
 
 Commit message: a single imperative subject line under ~72 chars matching the upstream log
 style (`Sync EndCurrentJob in FloatMenuOptionProvider_DraftedMove.PawnGotoAction`,
@@ -189,9 +177,9 @@ Issue body must contain:
 Say plainly that the branch is not ready to open against upstream yet, and that it becomes
 ready once the listed dependencies land in `dev`.
 
-## Keeping the model healthy
+## After the PR merges
 
-- After an upstream PR merges: `git fetch origin && git push fork origin/dev:dev`, then
-  `git checkout dev && git pull`, then rebase or merge `dev` into `integration`.
-- `dev..integration` shrinking to nothing means the fork is fully upstreamed.
-- Feature branches always start from `integration`, never from `dev`.
+Refresh per `CLAUDE.md` (`git fetch origin && git push fork origin/dev:dev`, then rebase or
+merge `dev` into `integration`). The merged commits leave `dev..integration` on their own;
+the `pr/*` branch can then be deleted. `dev..integration` shrinking to nothing means the
+fork is fully upstreamed.
