@@ -124,9 +124,13 @@ git -C "$WT" commit
 git worktree remove --force "$WT"     # the branch survives the worktree
 ```
 
-If the staged stat from step 3a listed `Languages`, the submodule pointer got swept in —
-unstage it (`git -C "$WT" restore --staged Languages`) before committing, unless the change
-is genuinely about translations. Upstream does not want our submodule ref.
+Two things must never reach an upstream PR — unstage them before committing if the step 3a
+stat listed either:
+
+- `Languages` — the submodule pointer got swept in. `git -C "$WT" restore --staged Languages`,
+  unless the change is genuinely about translations. Upstream does not want our submodule ref.
+- `.claude/` — fork-only tooling, tracked on `integration` and nowhere upstream.
+  `git -C "$WT" restore --staged .claude`.
 
 Commit message: a single imperative subject line under ~72 chars matching the upstream log
 style (`Sync EndCurrentJob in FloatMenuOptionProvider_DraftedMove.PawnGotoAction`,
