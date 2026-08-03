@@ -47,14 +47,37 @@ public static class PauseDomains
     }
 
     /// <summary>
-    /// Whether a world object's tick should be suppressed because its owning faction is blocked.
+    /// Whether a world object's tick should be suppressed because its owning faction is blocked by an
+    /// ownership-scoped encounter.
     ///
-    /// Placeholder: always false until the world tick gate lands (PR-4 / WP6). Returning false here means
-    /// the world keeps ticking exactly as it does today, so referencing this early is inert rather than
-    /// subtly wrong.
+    /// This is what lets the shared world clock keep running while one faction's assets stand still. A
+    /// faction-scoped world pause cannot be a time-speed setting -- there is exactly one world tickable
+    /// and zeroing it stops everybody -- so it has to be tick suppression applied per object inside a
+    /// world that is still advancing.
     /// </summary>
     public static bool IsWorldObjectPaused(WorldObject worldObject)
     {
+        if (worldObject?.Faction == null || Multiplayer.Client == null)
+            return false;
+
+        var sessionManager = Multiplayer.WorldComp?.sessionManager;
+        if (sessionManager == null)
+            return false;
+
+        int factionId = worldObject.Faction.loadID;
+        var sessions = sessionManager.AllSessions;
+
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            if (sessions[i] is CaravanEncounterSession encounter
+                && encounter.pausePolicy == EncounterPausePolicy.OwnerFactionAssets
+                && encounter.ownerFactionId == factionId
+                && CaravanEncounterRules.AssertsPause(encounter.currentState))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 }

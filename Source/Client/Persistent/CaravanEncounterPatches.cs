@@ -318,12 +318,36 @@ public static class CaravanEncounterOptionPatch
 public static class CaravanEncounterPolicy
 {
     /// <summary>
-    /// Ownership-scoped pausing is only expressible once maps tick independently *and* there is a way to
-    /// hold a faction's world assets still. Neither holds yet, so every encounter opens on a global pause.
-    /// The branch that adds the world tick gate replaces this with real capability detection.
+    /// Whether the world tick gate is compiled in and able to hold a faction's caravans still.
+    /// Constant today; kept as a named seam so that if the gate ever has to be disabled, the fallback
+    /// path is the one already exercised on every synchronized-time server rather than a new one.
+    /// </summary>
+    public const bool WorldTickGateAvailable = true;
+
+    /// <summary>
+    /// Reads the server's capabilities and defers the decision to the rules. Feature-detected rather than
+    /// assumed, because a partial freeze -- caravans still foraging while the encounter is open -- is
+    /// worse than an honest global pause.
     /// </summary>
     public static EncounterPausePolicy SelectPolicy()
     {
-        return EncounterPausePolicy.GlobalFallback;
+        var gameComp = Multiplayer.GameComp;
+        if (gameComp == null)
+            return EncounterPausePolicy.GlobalFallback;
+
+        var policy = CaravanEncounterRules.SelectPausePolicy(
+            gameComp.asyncTime,
+            gameComp.multifaction,
+            WorldTickGateAvailable);
+
+        if (policy == EncounterPausePolicy.GlobalFallback)
+        {
+            MpLog.Debug(
+                $"MP: caravan encounter falling back to a global pause " +
+                $"(asyncTime={gameComp.asyncTime}, multifaction={gameComp.multifaction}, " +
+                $"worldTickGate={WorldTickGateAvailable})");
+        }
+
+        return policy;
     }
 }
