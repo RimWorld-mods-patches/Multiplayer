@@ -245,6 +245,7 @@ namespace Multiplayer.Client
             executingCmdMap = map;
             TickPatch.currentExecutingCmdIssuedBySelf = cmd.IsIssuedBySelf() && !TickPatch.Simulating;
             TickPatch.currentExecutingCmdType = cmdType;
+            TickPatch.currentExecutingCmdFactionId = cmd.factionId;
 
             PreContext();
             map.PushFaction(cmd.GetFaction(), force: true);
@@ -311,6 +312,7 @@ namespace Multiplayer.Client
 
                 TickPatch.currentExecutingCmdIssuedBySelf = false;
                 TickPatch.currentExecutingCmdType = null;
+                TickPatch.currentExecutingCmdFactionId = ScheduledCommand.NoFaction;
                 executingCmdMap = null;
 
                 if (!keepTheMap)

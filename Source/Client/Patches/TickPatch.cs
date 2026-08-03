@@ -23,6 +23,18 @@ namespace Multiplayer.Client
         public static int workTicks;
         public static bool currentExecutingCmdIssuedBySelf;
         public static CommandType? currentExecutingCmdType;
+
+        /// <summary>
+        /// Faction the currently executing command was issued under, as stamped by the server.
+        /// <see cref="ScheduledCommand.NoFaction"/> outside command execution.
+        ///
+        /// Read this rather than Faction.OfPlayer when a synced handler needs to know who acted. The two
+        /// agree in practice, because ExecuteCmd pushes the command's faction before dispatching, but
+        /// Faction.OfPlayer is client-local state that merely happens to be correct inside that window --
+        /// and a reviewer checking "no synced method reads client-local state" cannot tell the difference
+        /// by looking. This field can only ever mean the command's faction.
+        /// </summary>
+        public static int currentExecutingCmdFactionId = ScheduledCommand.NoFaction;
         public static bool serverFrozen;
         public static int frozenAt;
 
