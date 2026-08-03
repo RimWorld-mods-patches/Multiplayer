@@ -1,4 +1,5 @@
 using Multiplayer.API;
+using Multiplayer.Client.Patches;
 using Multiplayer.Common;
 using RimWorld;
 using RimWorld.Planet;
@@ -17,7 +18,7 @@ namespace Multiplayer.Client.Persistent;
 /// This type is the data model only. Creation, presentation and choice handling land with the wiring
 /// that replaces the RegisterSyncDialogNodeTree path.
 /// </summary>
-public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRestrictions
+public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRestrictions, ITickingSession
 {
     /// <summary>
     /// Bumped on every accepted transition. A choice command carries the revision the client believed it
@@ -34,6 +35,9 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
     public EncounterKind kind;
     public EncounterState currentState = EncounterState.Pending;
     public EncounterPausePolicy pausePolicy = EncounterPausePolicy.GlobalFallback;
+
+    /// <summary>World tick the encounter opened on, used to bound how long it may hold a global pause.</summary>
+    public int createdAtTicks;
 
     /// <summary>The owner's caravan whose simulation this encounter blocks.</summary>
     public Caravan targetCaravan;
@@ -76,6 +80,7 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         this.counterparty = counterparty;
         this.pausePolicy = pausePolicy;
         ownerFactionId = targetCaravan?.Faction?.loadID ?? PauseDomainRules.NoFaction;
+        createdAtTicks = Find.TickManager?.TicksGame ?? 0;
     }
 
     public override bool IsCurrentlyPausing(Map map)
@@ -96,8 +101,129 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
     public bool CanExistWith(Session other)
         => other is not CaravanEncounterSession encounter || encounter.ownerFactionId != ownerFactionId;
 
-    /// <summary>Placeholder until the presenter lands; non-owners get no interactive surface regardless.</summary>
-    public override FloatMenuOption GetBlockingWindowOptions(ColonistBar.Entry entry) => null;
+    /// <summary>
+    /// Whether the local player may act on this encounter. Presentation only -- it decides what to draw,
+    /// never whether a command is honoured. Authority is re-checked inside <see cref="ApplyChoice"/> from
+    /// the command's own faction, so a client that lies here still cannot mutate the session.
+    /// </summary>
+    public bool LocalPlayerOwnsThis =>
+        Multiplayer.RealPlayerFaction is { } faction && faction.loadID == ownerFactionId;
+
+    public override FloatMenuOption GetBlockingWindowOptions(ColonistBar.Entry entry)
+    {
+        if (!LocalPlayerOwnsThis || !CaravanEncounterRules.AssertsPause(currentState))
+            return null;
+
+        return new FloatMenuOption("MpCaravanEncounterSession".Translate(), OpenWindow);
+    }
+
+    /// <summary>
+    /// Reopens the decision for the owning player. Closing the window is presentation, not a decision, so
+    /// the session survives it and this puts the view back.
+    /// </summary>
+    public void OpenWindow()
+    {
+        if (!LocalPlayerOwnsThis || !IsSessionValid)
+            return;
+
+        SwitchToMapOrWorld(null);
+        if (targetCaravan != null)
+            CameraJumper.TryJumpAndSelect(targetCaravan);
+    }
+
+    /// <summary>
+    /// Applies a semantic choice on behalf of the faction that issued the command.
+    ///
+    /// Every client runs this identically, so acceptance must depend only on replicated state and the
+    /// command's stamped faction. A refused command is a deterministic no-op everywhere rather than a
+    /// divergence on the client that sent it.
+    /// </summary>
+    [SyncMethod]
+    public void ApplyChoice(int expectedRevision, EncounterChoiceId choice)
+    {
+        var verdict = CaravanEncounterRules.EvaluateChoice(
+            TickPatch.currentExecutingCmdFactionId,
+            ownerFactionId,
+            expectedRevision,
+            revision,
+            currentState,
+            kind,
+            choice);
+
+        if (verdict != EncounterChoiceVerdict.Accept)
+        {
+            // Stale revisions are ordinary -- two players in one faction both clicked -- and must stay
+            // quiet. A wrong-faction command is not ordinary and is worth surfacing.
+            if (verdict == EncounterChoiceVerdict.WrongFaction)
+                Log.Warning($"MP: refused caravan encounter choice {choice} on session {SessionId}: {verdict}");
+
+            return;
+        }
+
+        if (!IsSessionValid)
+        {
+            Invalidate();
+            return;
+        }
+
+        revision++;
+        currentState = EncounterState.Transitioning;
+
+        // The outcome itself is applied by the transition handlers. Until those land the session resolves
+        // straight away, which releases the pause rather than stranding it -- the safe direction to fail.
+        Resolve();
+    }
+
+    /// <summary>Ends the encounter normally and releases its pause.</summary>
+    public void Resolve()
+    {
+        currentState = EncounterState.Resolved;
+        Remove();
+    }
+
+    /// <summary>
+    /// Ends the encounter because its target went away. Distinct from <see cref="Resolve"/> so the
+    /// difference between "the player chose" and "the world moved on" stays visible in logs and saves.
+    /// </summary>
+    public void Invalidate()
+    {
+        currentState = EncounterState.Invalidated;
+        Remove();
+    }
+
+    private void Remove()
+    {
+        Multiplayer.WorldComp?.sessionManager?.RemoveSession(this);
+    }
+
+    /// <summary>
+    /// Bounds how long an unanswered encounter may hold a global pause, and drops the session if its
+    /// target disappears. Runs inside the synchronized tick on every client, so the auto-resolve fires on
+    /// the same tick everywhere.
+    /// </summary>
+    public void Tick()
+    {
+        if (!CaravanEncounterRules.AssertsPause(currentState))
+            return;
+
+        if (!IsSessionValid)
+        {
+            Invalidate();
+            return;
+        }
+
+        if (!CaravanEncounterRules.NeedsTimeout(pausePolicy))
+            return;
+
+        int now = Find.TickManager?.TicksGame ?? 0;
+        if (CaravanEncounterRules.HasTimedOut(createdAtTicks, now))
+        {
+            Log.Message(
+                $"MP: caravan encounter {SessionId} timed out after {now - createdAtTicks} ticks; " +
+                $"resolving to {CaravanEncounterRules.DefaultChoiceFor(kind)}");
+            Resolve();
+        }
+    }
 
     public override void ExposeData()
     {
@@ -108,6 +234,7 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         Scribe_Values.Look(ref kind, "kind");
         Scribe_Values.Look(ref currentState, "currentState", EncounterState.Pending);
         Scribe_Values.Look(ref pausePolicy, "pausePolicy", EncounterPausePolicy.GlobalFallback);
+        Scribe_Values.Look(ref createdAtTicks, "createdAtTicks");
 
         Scribe_References.Look(ref targetCaravan, "targetCaravan");
         Scribe_References.Look(ref encounteredFaction, "encounteredFaction");
