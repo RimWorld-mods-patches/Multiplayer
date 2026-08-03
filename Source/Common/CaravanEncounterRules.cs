@@ -191,6 +191,32 @@ namespace Multiplayer.Common
             => policy == EncounterPausePolicy.GlobalFallback;
 
         /// <summary>
+        /// Which pause policy an encounter should open with, given what the server can actually support.
+        ///
+        /// Ownership-scoped pausing needs all three conditions, and degrades to a global pause otherwise:
+        /// <list type="bullet">
+        /// <item><b>Async time.</b> With it off, the effective tick rate is the minimum across every
+        /// tickable, so pausing only the owner's maps still drags every other faction to zero. The
+        /// isolation would be a claim the engine cannot honour.</item>
+        /// <item><b>Multifaction.</b> With one player faction there is nobody to isolate from, and a
+        /// global pause is both simpler and closer to vanilla.</item>
+        /// <item><b>A world tick gate.</b> Without it the owner's caravans keep moving, foraging and
+        /// tending while the encounter is open. A partial freeze is worse than an honest global one:
+        /// it looks like it works right up until something desyncs.</item>
+        /// </list>
+        /// </summary>
+        public static EncounterPausePolicy SelectPausePolicy(
+            bool asyncTimeEnabled,
+            bool multifactionEnabled,
+            bool worldTickGateAvailable)
+        {
+            if (asyncTimeEnabled && multifactionEnabled && worldTickGateAvailable)
+                return EncounterPausePolicy.OwnerFactionAssets;
+
+            return EncounterPausePolicy.GlobalFallback;
+        }
+
+        /// <summary>
         /// Whether an incoming choice command may be applied, and if not, why.
         ///
         /// Authority is decided from the faction the command was issued under -- stamped by the server and

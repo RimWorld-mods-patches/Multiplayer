@@ -167,6 +167,54 @@ public class CaravanEncounterRulesTest
         });
     }
 
+    // ---- Capability detection ----
+
+    [Test]
+    public void AllCapabilitiesPresent_SelectsOwnerFactionAssets()
+    {
+        Assert.That(CaravanEncounterRules.SelectPausePolicy(
+                asyncTimeEnabled: true, multifactionEnabled: true, worldTickGateAvailable: true),
+            Is.EqualTo(EncounterPausePolicy.OwnerFactionAssets));
+    }
+
+    [Test]
+    public void SynchronizedTime_FallsBackToGlobal()
+    {
+        Assert.That(CaravanEncounterRules.SelectPausePolicy(
+                asyncTimeEnabled: false, multifactionEnabled: true, worldTickGateAvailable: true),
+            Is.EqualTo(EncounterPausePolicy.GlobalFallback),
+            "With one shared rate an ownership-scoped pause still stops everyone, so claiming isolation would be false");
+    }
+
+    [Test]
+    public void SingleFaction_FallsBackToGlobal()
+    {
+        Assert.That(CaravanEncounterRules.SelectPausePolicy(
+                asyncTimeEnabled: true, multifactionEnabled: false, worldTickGateAvailable: true),
+            Is.EqualTo(EncounterPausePolicy.GlobalFallback),
+            "With nobody to isolate from, a global pause is simpler and closer to vanilla");
+    }
+
+    [Test]
+    public void NoWorldTickGate_FallsBackToGlobal()
+    {
+        Assert.That(CaravanEncounterRules.SelectPausePolicy(
+                asyncTimeEnabled: true, multifactionEnabled: true, worldTickGateAvailable: false),
+            Is.EqualTo(EncounterPausePolicy.GlobalFallback),
+            "A partial freeze, with the owner's caravans still foraging, is worse than an honest global one");
+    }
+
+    [Test]
+    public void SynchronizedTimeIsTheDefault_AndAlwaysGetsATimeout()
+    {
+        // The default server has asyncTime off, so it always lands on GlobalFallback -- and GlobalFallback
+        // is exactly the policy that must be timeout-bounded. This keeps those two facts tied together.
+        var policy = CaravanEncounterRules.SelectPausePolicy(
+            asyncTimeEnabled: false, multifactionEnabled: true, worldTickGateAvailable: true);
+
+        Assert.That(CaravanEncounterRules.NeedsTimeout(policy), Is.True);
+    }
+
     // ---- Choice authority and concurrency ----
 
     private static EncounterChoiceVerdict Evaluate(
