@@ -69,10 +69,12 @@ public static class PauseDomains
 
         for (int i = 0; i < sessions.Count; i++)
         {
-            if (sessions[i] is CaravanEncounterSession encounter
-                && encounter.pausePolicy == EncounterPausePolicy.OwnerFactionAssets
-                && encounter.ownerFactionId == factionId
-                && CaravanEncounterRules.AssertsPause(encounter.currentState))
+            // Asks the shared contract rather than naming session types, so an ownership-scoped session
+            // added later cannot silently miss the gate and leave its owner's caravans half-frozen.
+            if (sessions[i] is IFactionScopedPauseSession scoped
+                && scoped.PausePolicy == EncounterPausePolicy.OwnerFactionAssets
+                && scoped.PauseOwnerFactionId == factionId
+                && scoped.IsPauseActive)
             {
                 return true;
             }

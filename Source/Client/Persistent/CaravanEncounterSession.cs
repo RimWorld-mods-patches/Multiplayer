@@ -22,8 +22,13 @@ namespace Multiplayer.Client.Persistent;
 /// and any drift between the two is a desync. What this session replaces is *who may choose and when* --
 /// not what choosing does.
 /// </summary>
-public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRestrictions, ITickingSession
+public class CaravanEncounterSession
+    : ExposableSession, ISessionWithCreationRestrictions, ITickingSession, IFactionScopedPauseSession
 {
+    public int PauseOwnerFactionId => ownerFactionId;
+    public EncounterPausePolicy PausePolicy => pausePolicy;
+    public bool IsPauseActive => CaravanEncounterRules.AssertsPause(currentState);
+
     /// <summary>
     /// Bumped on every accepted transition. A choice command carries the revision the client believed it
     /// was acting on, so a duplicate or late click is a deterministic no-op instead of a second outcome.
