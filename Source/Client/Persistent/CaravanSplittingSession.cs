@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Multiplayer.API;
+using Multiplayer.Common;
 using RimWorld;
 using RimWorld.Planet;
 using Verse;
@@ -10,7 +11,8 @@ namespace Multiplayer.Client.Persistent
     /// <summary>
     /// Represents an active Caravan Split session. This session will track all the pawns and items being split.
     /// </summary>
-    public class CaravanSplittingSession : ExposableSession, ISessionWithTransferables, ISessionWithCreationRestrictions
+    public class CaravanSplittingSession
+        : ExposableSession, ISessionWithTransferables, ISessionWithCreationRestrictions, IFactionScopedPauseSession
     {
         // This session is only possible on the world, so the map is always null.
         public override Map Map => null;
@@ -184,7 +186,35 @@ namespace Multiplayer.Client.Persistent
             });
         }
 
-        public override bool IsCurrentlyPausing(Map map) => true;
+        /// <summary>
+        /// The faction whose caravan is being split. Derived from the caravan rather than stored, so saves
+        /// written before this change still load without a migration step.
+        /// </summary>
+        public int PauseOwnerFactionId => Caravan?.Faction?.loadID ?? PauseDomainRules.NoFaction;
+
+        public EncounterPausePolicy PausePolicy => CaravanEncounterPolicy.SelectPolicy();
+
+        public bool IsPauseActive => IsSessionValid;
+
+        /// <summary>
+        /// Splitting used to pause unconditionally, which was a reasonable shortcut while there was no
+        /// shared rule to reuse -- but it means one player opening the split dialog stops every other
+        /// faction's colony outright.
+        ///
+        /// Now it answers the same way a caravan encounter does. On the servers that cannot support
+        /// ownership scoping -- synchronized time, or a single player faction -- SelectPolicy returns
+        /// GlobalFallback and this stays true for everything, exactly as before.
+        /// </summary>
+        public override bool IsCurrentlyPausing(Map map)
+        {
+            if (!IsPauseActive)
+                return false;
+
+            return CaravanEncounterRules.PolicyPauses(
+                PausePolicy,
+                isWorldTickable: map == null,
+                isMapInOwnerDomain: map != null && PauseDomains.IsMapInPauseDomain(map, PauseOwnerFactionId));
+        }
 
         public bool CanExistWith(Session other) => other is not CaravanSplittingSession;
     }
