@@ -132,6 +132,41 @@ public class CaravanEncounterRulesTest
         });
     }
 
+    // ---- Timeout bounding ----
+
+    [Test]
+    public void EncounterInsideTimeout_HasNotTimedOut()
+    {
+        Assert.That(CaravanEncounterRules.HasTimedOut(createdAtTicks: 1000, nowTicks: 1999, timeoutTicks: 1000),
+            Is.False);
+    }
+
+    [Test]
+    public void EncounterAtExactlyTimeout_HasTimedOut()
+    {
+        Assert.That(CaravanEncounterRules.HasTimedOut(createdAtTicks: 1000, nowTicks: 2000, timeoutTicks: 1000),
+            Is.True, "The bound is inclusive so the fire tick is unambiguous across clients");
+    }
+
+    [Test]
+    public void NonPositiveTimeout_NeverFires()
+    {
+        Assert.That(CaravanEncounterRules.HasTimedOut(createdAtTicks: 0, nowTicks: int.MaxValue, timeoutTicks: 0),
+            Is.False, "A disabled timeout must not fire immediately");
+    }
+
+    [Test]
+    public void OnlyGlobalFallbackNeedsATimeout()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(CaravanEncounterRules.NeedsTimeout(EncounterPausePolicy.GlobalFallback), Is.True,
+                "A global pause held by an absent owner stalls every faction, so it must be bounded");
+            Assert.That(CaravanEncounterRules.NeedsTimeout(EncounterPausePolicy.OwnerFactionAssets), Is.False,
+                "An ownership-scoped pause only blocks its owner and can wait indefinitely");
+        });
+    }
+
     // ---- Choice authority and concurrency ----
 
     private static EncounterChoiceVerdict Evaluate(

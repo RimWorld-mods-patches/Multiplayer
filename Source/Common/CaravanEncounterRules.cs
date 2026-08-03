@@ -150,6 +150,33 @@ namespace Multiplayer.Common
         }
 
         /// <summary>
+        /// How long an unanswered encounter holds its pause before auto-resolving, in ticks.
+        /// One in-game day at normal speed. Long enough that a player reading the dialog is never
+        /// rushed, short enough that an abandoned encounter does not strand a server indefinitely.
+        /// </summary>
+        public const int DefaultTimeoutTicks = 60000;
+
+        /// <summary>
+        /// Whether an encounter opened at <paramref name="createdAtTicks"/> has outlived its timeout.
+        ///
+        /// Measured in simulation ticks, never wall-clock: every client must agree on exactly which tick
+        /// the auto-resolve fires, and a real-time timer would fire at a different tick on each machine.
+        /// Only meaningful under GlobalFallback, where a stalled owner blocks everyone; an
+        /// OwnerFactionAssets encounter blocks only its owner and can wait indefinitely.
+        /// </summary>
+        public static bool HasTimedOut(int createdAtTicks, int nowTicks, int timeoutTicks = DefaultTimeoutTicks)
+        {
+            if (timeoutTicks <= 0)
+                return false;
+
+            return nowTicks - createdAtTicks >= timeoutTicks;
+        }
+
+        /// <summary>Whether a policy needs the timeout at all.</summary>
+        public static bool NeedsTimeout(EncounterPausePolicy policy)
+            => policy == EncounterPausePolicy.GlobalFallback;
+
+        /// <summary>
         /// Whether an incoming choice command may be applied, and if not, why.
         ///
         /// Authority is decided from the faction the command was issued under -- stamped by the server and
