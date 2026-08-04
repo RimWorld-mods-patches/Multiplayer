@@ -9,6 +9,7 @@ using HarmonyLib;
 using RimWorld;
 using RimWorld.Planet;
 using RimWorld.QuestGen;
+using UnityEngine;
 using Verse;
 
 namespace Multiplayer.Client.Patches
@@ -127,6 +128,10 @@ namespace Multiplayer.Client.Patches
     [HarmonyPatch(typeof(FastTileFinder), nameof(FastTileFinder.Query))]
     static class DebugLogFastTileFinderQuery
     {
+        // Tiles observed flickering in/out of candidate lists at identical rand states; probe
+        // every validity ingredient per query to find which term is non-deterministic.
+        private static readonly int[] probeTiles = { 2466, 2978 };
+
         static void Prefix(ref ulong __state) => __state = Rand.StateCompressed;
 
         static void Postfix(object[] __args, object __result, ulong __state)
@@ -135,7 +140,41 @@ namespace Multiplayer.Client.Patches
 
             var args = string.Join(" | ", __args.Select(QuestSiteDebugLog.Describe));
             QuestSiteDebugLog.Write(
-                $"FastTileFinder.Query randBefore={__state}\n  args: {args}\n  result: {QuestSiteDebugLog.Describe(__result)}");
+                $"FastTileFinder.Query randBefore={__state}\n  args: {args}\n  result: {QuestSiteDebugLog.Describe(__result)}\n{Probe(__args)}");
+        }
+
+        private static string Probe(object[] args)
+        {
+            try
+            {
+                var origin = (PlanetTile)args[0].GetType().GetField("origin").GetValue(args[0]);
+                if (!origin.Valid) return "  probe: invalid origin";
+
+                var layer = origin.Layer;
+                var originCenter = layer.GetTileCenter(origin);
+                var sb = new StringBuilder();
+                sb.Append($"  probe originField={Find.WorldReachability.GetLocalFieldId(origin)}");
+
+                foreach (var tileId in probeTiles)
+                {
+                    var tile = new PlanetTile(tileId, layer);
+                    var center = layer.GetTileCenter(tile);
+                    // Same formula as ComputeQueryJob.IsValidDistance, in managed math
+                    var dist = Mathf.Acos(UnityEngine.Vector3.Dot(originCenter.normalized, center.normalized))
+                               * layer.Radius / layer.AverageTileSize;
+                    sb.Append(
+                        $"\n  probe tile={tileId} valid={TileFinder.IsValidTileForNewSettlement(tile)} " +
+                        $"passable={Find.WorldPathGrid.PassableFast(tile)} " +
+                        $"field={Find.WorldReachability.GetLocalFieldId(tile)} " +
+                        $"dist={dist:R}");
+                }
+
+                return sb.ToString();
+            }
+            catch (Exception e)
+            {
+                return $"  probe failed: {e.GetType().Name}: {e.Message}";
+            }
         }
     }
 
