@@ -162,8 +162,26 @@ namespace Multiplayer.Client.Patches
                     // Same formula as ComputeQueryJob.IsValidDistance, in managed math
                     var dist = Mathf.Acos(UnityEngine.Vector3.Dot(originCenter.normalized, center.normalized))
                                * layer.Radius / layer.AverageTileSize;
+
+                    var valid = TileFinder.IsValidTileForNewSettlement(tile);
+                    var objs = string.Join(",",
+                        Find.WorldObjects.ObjectsAt(tile).Select(o => $"{o.def?.defName}:{o.def?.canHaveMap}"));
+
+                    // Re-evaluate concurrently: cached tile data is built inside a Parallel.For,
+                    // so if validity is unstable under concurrency, this counts the flips.
+                    var disagree = 0;
+                    System.Threading.Tasks.Parallel.For(0, 16, _ =>
+                    {
+                        if (TileFinder.IsValidTileForNewSettlement(tile) != valid)
+                            System.Threading.Interlocked.Increment(ref disagree);
+                    });
+
                     sb.Append(
-                        $"\n  probe tile={tileId} valid={TileFinder.IsValidTileForNewSettlement(tile)} " +
+                        $"\n  probe tile={tileId} valid={valid} race={disagree} objs=[{objs}] " +
+                        $"settl={Find.WorldObjects.AnySettlementBaseAt(tile)} " +
+                        $"adj={Find.WorldObjects.AnySettlementBaseAtOrAdjacent(tile, out _)} " +
+                        $"mapParent={Find.WorldObjects.AnyMapParentAt(tile)} " +
+                        $"map={Current.Game.FindMap(tile) != null} " +
                         $"passable={Find.WorldPathGrid.PassableFast(tile)} " +
                         $"field={Find.WorldReachability.GetLocalFieldId(tile)} " +
                         $"dist={dist:R}");
