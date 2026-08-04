@@ -103,6 +103,52 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
     {
         choiceActions = options;
         dialogWindow = window;
+
+        // Vanilla ships these dialogs with no way out -- Dialog_NodeTree sets closeOnCancel false, so
+        // Escape does nothing -- because in single player answering is the only thing left to do and the
+        // dialog is the only copy of the decision.
+        //
+        // Neither holds here. The session is the decision now, so the window is just a view of it, and an
+        // unanswerable modal that pauses every player is far worse in multiplayer than in vanilla: one
+        // player reading a dialog traps everyone else with no recourse. It also strands
+        // GetBlockingWindowOptions, whose only purpose is to bring a dismissed window back.
+        //
+        // Escape follows TradingWindow, the other session-backed window a player can set aside; restoring
+        // the Window default is enough, since only Dialog_NodeTree's constructor turns it off. The visible
+        // affordance is the shared MpSwitchToMap button, drawn by SwitchToMapPatch -- see IsAdoptedWindow.
+        if (window != null)
+            window.closeOnCancel = true;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="window"/> is a vanilla dialog some live encounter has adopted.
+    ///
+    /// <see cref="ISwitchToMap"/> is the normal way a window asks for the minimise button, but that is a
+    /// marker interface and this dialog is vanilla's own <c>Dialog_NodeTreeWithFactionInfo</c>, which
+    /// cannot be made to implement it. Recognising it by ownership instead gets the same button from the
+    /// same patch, rather than drawing a second one that only looks like it.
+    /// </summary>
+    public static bool IsAdoptedWindow(Window window)
+    {
+        if (window == null)
+            return false;
+
+        // Checked before WorldComp is touched at all: that property is game.worldComp with no null guard
+        // of its own, so reading it outside a game throws. This runs from SwitchToMapPatch, which draws
+        // every window there is -- including the main menu's and the debug log's, long before a game
+        // exists -- and an exception there leaves the window blank rather than merely unbuttoned.
+        if (Multiplayer.game == null || Multiplayer.Client == null)
+            return false;
+
+        var sessions = Multiplayer.WorldComp?.sessionManager?.AllSessions;
+        if (sessions == null)
+            return false;
+
+        for (int i = 0; i < sessions.Count; i++)
+            if (sessions[i] is CaravanEncounterSession encounter && encounter.dialogWindow == window)
+                return true;
+
+        return false;
     }
 
     /// <summary>Whether <paramref name="option"/> is one of this encounter's choices.</summary>
