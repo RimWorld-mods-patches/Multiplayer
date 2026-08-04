@@ -30,7 +30,7 @@ namespace Multiplayer.Common
         // id can be an IPAddress or CSteamID
         public MpDisconnectReason? OnPreConnect(object id)
         {
-            if (server.FullyStarted is false && !server.BootstrapMode)
+            if (!server.AcceptingConnections)
                 return MpDisconnectReason.ServerStarting;
 
             if (id is IPAddress addr && IPAddress.IsLoopback(addr))

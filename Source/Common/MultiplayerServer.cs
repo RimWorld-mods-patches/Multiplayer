@@ -67,6 +67,10 @@ namespace Multiplayer.Common
 
         public bool FullyStarted => running && worldData.savedGame != null;
 
+        /// Whether a joiner would get past OnPreConnect. Also the condition for advertising the server at all —
+        /// a host that isn't ready must not be offered as joinable.
+        public bool AcceptingConnections => FullyStarted || BootstrapMode;
+
         public const float StandardTimePerTick = 1000.0f / 60.0f;
 
         public float serverTimePerTick = StandardTimePerTick;

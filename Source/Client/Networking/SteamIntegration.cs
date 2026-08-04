@@ -64,9 +64,20 @@ namespace Multiplayer.Client
         {
             ServerLog.Log($"Incoming Steam connection from {remoteId}");
 
-            if (Multiplayer.LocalServer?.settings.steam != true)
+            var server = Multiplayer.LocalServer;
+            if (server?.settings.steam != true)
             {
                 SteamNetworkingSockets.CloseConnection(conn, 0, "", false);
+                return;
+            }
+
+            // The listen socket is opened before hosting finishes, so peers can reach us while the world is still
+            // being saved. PlayerManager.OnPreConnect would reject them, but it only runs on the server queue,
+            // which nothing drains until the server thread starts — the peer would sit connected and never hear
+            // back. Reject here, on the main thread, so they get told to try again instead.
+            if (!server.AcceptingConnections)
+            {
+                RejectConnection(conn, MpDisconnectReason.ServerStarting);
                 return;
             }
 
@@ -125,6 +136,15 @@ namespace Multiplayer.Client
             SteamNetworkingSockets.CloseConnection(conn, 0, "", false);
         }
 
+        // Turns down a connection we never accepted. There's no ConnectionBase to send a goodbye packet through
+        // yet, so the reason travels only as an App-range end reason, which SteamSocketClientConn.OnClosed
+        // decodes back into an MpDisconnectReason.
+        private static void RejectConnection(HSteamNetConnection conn, MpDisconnectReason reason)
+        {
+            int endReason = (int)ESteamNetConnectionEnd.k_ESteamNetConnectionEnd_App_Min + (int)reason;
+            SteamNetworkingSockets.CloseConnection(conn, endReason, "", bEnableLinger: true);
+        }
+
         private static void AcceptConnection(HSteamNetConnection conn, CSteamID remoteId)
         {
             var result = SteamNetworkingSockets.AcceptConnection(conn);
@@ -145,7 +165,10 @@ namespace Multiplayer.Client
         {
             if (lastSteamUpdate.ElapsedMilliseconds < 1000) return;
 
-            var localSteam = Multiplayer.LocalServer?.settings.steam ?? false;
+            // Gated on readiness, not on the server merely existing: the server object and its listen socket are
+            // created up front, but the world isn't saved until hosting finishes. Advertising before that puts a
+            // join button in front of friends the host can't actually serve yet.
+            var localSteam = Multiplayer.LocalServer is { settings.steam: true, AcceptingConnections: true };
             var remoteSteam = (Multiplayer.Client as SteamSocketClientConn)?.remoteId;
             if (localSteam != lastLocalSteam || remoteSteam != lastRemoteSteam)
             {
