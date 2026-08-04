@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Multiplayer.API;
 using Multiplayer.Client.Patches;
 using Multiplayer.Common;
@@ -13,10 +14,13 @@ namespace Multiplayer.Client.Persistent;
 /// Registered on the world session manager rather than a map's, because a caravan is a world object and
 /// the encounter may have no map at all. Holds semantic state only -- a kind, a lifecycle state and a
 /// choice id -- never a <c>Dialog_NodeTree</c>: DiaOption carries Action closures over live incident
-/// state, which Scribe cannot serialize, so a session holding one could not survive a save.
+/// state, which Scribe cannot serialize.
 ///
-/// This type is the data model only. Creation, presentation and choice handling land with the wiring
-/// that replaces the RegisterSyncDialogNodeTree path.
+/// The outcome of a choice is still vanilla's own DiaOption action, captured at creation and invoked
+/// inside the synchronized command. That is deliberate: reimplementing goodwill changes, map generation,
+/// lord creation and the demand payout would be a second copy of vanilla's rules to keep in step with it,
+/// and any drift between the two is a desync. What this session replaces is *who may choose and when* --
+/// not what choosing does.
 /// </summary>
 public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRestrictions, ITickingSession
 {
@@ -46,12 +50,19 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
     public Faction encounteredFaction;
 
     /// <summary>
-    /// The generated other party. Vanilla builds this caravan with <c>PlanetTile.Invalid</c> and
-    /// <c>CaravanMaker.MakeCaravan</c> only registers a caravan with <c>Find.WorldObjects</c> when the
-    /// starting tile is valid -- so it is never a registered world object and no reference-based scribe
-    /// can resolve it. This session therefore deep-owns it outright.
+    /// Vanilla's own option actions for this encounter, keyed by semantic id.
+    ///
+    /// Deliberately not serialized, and not serializable: these are closures over the generated
+    /// counterparty. That costs nothing across a save, because vanilla does not persist the encounter
+    /// either -- CaravanMaker only calls Find.WorldObjects.Add when the starting tile is valid, and the
+    /// meeting passes PlanetTile.Invalid, so the met caravan and its pawns are already discarded by a
+    /// save/load in the base game. A session that reloads without these retires itself rather than
+    /// pretending it can still act, which lands on exactly the vanilla outcome.
     /// </summary>
-    public Caravan counterparty;
+    private Dictionary<EncounterChoiceId, DiaOption> choiceActions;
+
+    /// <summary>The owner's local view, kept so closing the window can be undone. Not authoritative.</summary>
+    private Window dialogWindow;
 
     /// <summary>World-level session: there is no single map this belongs to.</summary>
     public override Map Map => null;
@@ -62,6 +73,9 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         && currentState != EncounterState.Resolved
         && currentState != EncounterState.Invalidated;
 
+    /// <summary>Whether this session still knows how to carry out a choice. False after a save/load.</summary>
+    public bool CanApplyOutcomes => choiceActions is { Count: > 0 };
+
     /// <summary>Mandatory constructor used when the session manager reconstructs this from a save.</summary>
     public CaravanEncounterSession(Map _) : base(null)
     {
@@ -71,16 +85,43 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         EncounterKind kind,
         Caravan targetCaravan,
         Faction encounteredFaction,
-        Caravan counterparty,
         EncounterPausePolicy pausePolicy) : base(null)
     {
         this.kind = kind;
         this.targetCaravan = targetCaravan;
         this.encounteredFaction = encounteredFaction;
-        this.counterparty = counterparty;
         this.pausePolicy = pausePolicy;
         ownerFactionId = targetCaravan?.Faction?.loadID ?? PauseDomainRules.NoFaction;
         createdAtTicks = Find.TickManager?.TicksGame ?? 0;
+    }
+
+    /// <summary>
+    /// Hands the session vanilla's option actions and the local window they came from. Called on every
+    /// client, because every client ran the same incident and built the same dialog.
+    /// </summary>
+    public void BindPresentation(Dictionary<EncounterChoiceId, DiaOption> options, Window window)
+    {
+        choiceActions = options;
+        dialogWindow = window;
+    }
+
+    /// <summary>Whether <paramref name="option"/> is one of this encounter's choices.</summary>
+    public bool TryGetChoiceFor(DiaOption option, out EncounterChoiceId choice)
+    {
+        choice = default;
+        if (choiceActions == null)
+            return false;
+
+        foreach (var pair in choiceActions)
+        {
+            if (pair.Value == option)
+            {
+                choice = pair.Key;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public override bool IsCurrentlyPausing(Map map)
@@ -111,24 +152,34 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
 
     public override FloatMenuOption GetBlockingWindowOptions(ColonistBar.Entry entry)
     {
-        if (!LocalPlayerOwnsThis || !CaravanEncounterRules.AssertsPause(currentState))
+        if (!LocalPlayerOwnsThis || !CaravanEncounterRules.AssertsPause(currentState) || dialogWindow == null)
             return null;
 
         return new FloatMenuOption("MpCaravanEncounterSession".Translate(), OpenWindow);
     }
 
     /// <summary>
-    /// Reopens the decision for the owning player. Closing the window is presentation, not a decision, so
-    /// the session survives it and this puts the view back.
+    /// Puts the owner's window back. Closing it is presentation, not a decision, so the session survives
+    /// and this restores the view rather than rebuilding it -- the dialog holds the closures that carry
+    /// out whatever the player picks.
     /// </summary>
     public void OpenWindow()
     {
-        if (!LocalPlayerOwnsThis || !IsSessionValid)
+        if (!LocalPlayerOwnsThis || !IsSessionValid || dialogWindow == null)
             return;
 
-        SwitchToMapOrWorld(null);
+        if (!Find.WindowStack.IsOpen(dialogWindow))
+            Find.WindowStack.Add(dialogWindow);
+
         if (targetCaravan != null)
             CameraJumper.TryJumpAndSelect(targetCaravan);
+    }
+
+    /// <summary>Drops the owner's local window without touching the decision it represents.</summary>
+    public void CloseWindowLocally()
+    {
+        if (dialogWindow != null && Find.WindowStack.IsOpen(dialogWindow))
+            dialogWindow.Close(doCloseSound: false);
     }
 
     /// <summary>
@@ -166,12 +217,44 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
             return;
         }
 
+        CommitChoice(choice);
+    }
+
+    /// <summary>
+    /// Advances the session and carries the choice out. Order matters: the window closes first so the
+    /// outcome's own windows open on top of nothing, and the session is removed last, so the pause is
+    /// continuous -- between here and any successor session taking over there is no tick at which nothing
+    /// is pausing.
+    /// </summary>
+    private void CommitChoice(EncounterChoiceId choice)
+    {
         revision++;
         currentState = EncounterState.Transitioning;
 
-        // The outcome itself is applied by the transition handlers. Until those land the session resolves
-        // straight away, which releases the pause rather than stranding it -- the safe direction to fail.
+        CloseWindowLocally();
+        Transition(choice);
         Resolve();
+    }
+
+    /// <summary>
+    /// Carries out a choice by invoking vanilla's own action for it.
+    ///
+    /// Runs inside the synchronized command on every client, which is what makes the follow-on work
+    /// replicated rather than local: MP already intercepts <c>new Dialog_Trade(...)</c> while a command is
+    /// executing and turns it into an MpTradeSession, so vanilla's Trade action produces a shared trade
+    /// on every client instead of a window on one.
+    /// </summary>
+    private void Transition(EncounterChoiceId choice)
+    {
+        if (choiceActions == null || !choiceActions.TryGetValue(choice, out var option) || option?.action == null)
+        {
+            // Reached only if the session outlived the dialog that created it, which a save/load does.
+            // Nothing to apply; releasing the pause is the safe direction to fail.
+            Log.Warning($"MP: caravan encounter {SessionId} has no action for {choice}; releasing without an outcome");
+            return;
+        }
+
+        option.action();
     }
 
     /// <summary>Ends the encounter normally and releases its pause.</summary>
@@ -182,12 +265,13 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
     }
 
     /// <summary>
-    /// Ends the encounter because its target went away. Distinct from <see cref="Resolve"/> so the
-    /// difference between "the player chose" and "the world moved on" stays visible in logs and saves.
+    /// Ends the encounter because it can no longer be carried out. Distinct from <see cref="Resolve"/> so
+    /// the difference between "the player chose" and "the world moved on" stays visible in logs and saves.
     /// </summary>
     public void Invalidate()
     {
         currentState = EncounterState.Invalidated;
+        CloseWindowLocally();
         Remove();
     }
 
@@ -197,9 +281,9 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
     }
 
     /// <summary>
-    /// Bounds how long an unanswered encounter may hold a global pause, and drops the session if its
-    /// target disappears. Runs inside the synchronized tick on every client, so the auto-resolve fires on
-    /// the same tick everywhere.
+    /// Bounds how long an unanswered encounter may hold a global pause, drops the session if its target
+    /// disappears, and retires one that outlived its dialog. Runs inside the synchronized tick on every
+    /// client, so each of those fires on the same tick everywhere.
     /// </summary>
     public void Tick()
     {
@@ -212,16 +296,28 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
             return;
         }
 
+        // Restored from a save. Vanilla does not persist this encounter at all -- its met caravan is never
+        // added to Find.WorldObjects -- so matching that by dropping it is the honest outcome, and far
+        // better than holding a pause that nothing left alive can release.
+        if (!CanApplyOutcomes)
+        {
+            Log.Message($"MP: caravan encounter {SessionId} did not survive a reload; releasing it");
+            Invalidate();
+            return;
+        }
+
         if (!CaravanEncounterRules.NeedsTimeout(pausePolicy))
             return;
 
         int now = Find.TickManager?.TicksGame ?? 0;
         if (CaravanEncounterRules.HasTimedOut(createdAtTicks, now))
         {
+            var fallback = CaravanEncounterRules.DefaultChoiceFor(kind);
             Log.Message(
                 $"MP: caravan encounter {SessionId} timed out after {now - createdAtTicks} ticks; " +
-                $"resolving to {CaravanEncounterRules.DefaultChoiceFor(kind)}");
-            Resolve();
+                $"resolving to {fallback}");
+
+            CommitChoice(fallback);
         }
     }
 
@@ -239,8 +335,7 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         Scribe_References.Look(ref targetCaravan, "targetCaravan");
         Scribe_References.Look(ref encounteredFaction, "encounteredFaction");
 
-        // Deep, not by reference: the counterparty is not in Find.WorldObjects, so there is nothing for a
-        // reference to point at. Losing this is how the encountered pawns would vanish across a reload.
-        Scribe_Deep.Look(ref counterparty, "counterparty");
+        // choiceActions and dialogWindow are intentionally absent -- see their declarations. A session
+        // that loads without them retires itself on its next tick.
     }
 }
