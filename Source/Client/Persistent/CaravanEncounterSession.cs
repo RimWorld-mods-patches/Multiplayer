@@ -232,8 +232,37 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         currentState = EncounterState.Transitioning;
 
         CloseWindowLocally();
+
+        int tradesBefore = Multiplayer.WorldComp?.trading?.Count ?? 0;
         Transition(choice);
+        ShowTradeToChooser(tradesBefore);
+
         Resolve();
+    }
+
+    /// <summary>
+    /// Shows a trade the choice just opened to the player who chose it.
+    ///
+    /// <see cref="MpTradeSession"/> is created for everyone by DialogTradeCtorPatch, but that patch only
+    /// raises a window for two shapes it recognises: a negotiator standing on the current map, and a
+    /// Settlement viewed from the planet. A caravan meeting is neither -- the negotiator is in a caravan so
+    /// its Map is null, and the trader is a Caravan -- so without this the chooser is left staring at a
+    /// paused planet with the trade reachable only through the colonist bar.
+    ///
+    /// Only the issuing client opens it, matching <see cref="GrowthMomentSession"/>. Everyone else gets the
+    /// session in their colonist bar instead of a window appearing over whatever they were doing.
+    /// </summary>
+    private static void ShowTradeToChooser(int tradesBefore)
+    {
+        if (!TickPatch.currentExecutingCmdIssuedBySelf)
+            return;
+
+        var trades = Multiplayer.WorldComp?.trading;
+        if (trades == null || trades.Count <= tradesBefore)
+            return;
+
+        // PostAddSession appends, so a trade opened by this choice is the last one.
+        trades[trades.Count - 1].OpenWindow();
     }
 
     /// <summary>
