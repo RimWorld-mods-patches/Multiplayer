@@ -22,23 +22,71 @@ namespace Multiplayer.Client.Persistent;
 [HarmonyPatch]
 public static class CaravanEncounterPatches
 {
+    /// <summary>
+    /// Set while one of the two incident workers is running, so the dialog it pushes can be identified by
+    /// <em>when</em> it was added rather than by searching the window stack afterwards.
+    /// </summary>
+    private static bool capturingDialog;
+
+    /// <summary>The dialog the running incident pushed, or null if it pushed none.</summary>
+    private static Dialog_NodeTreeWithFactionInfo capturedDialog;
+
     [HarmonyPatch(typeof(IncidentWorker_CaravanMeeting), nameof(IncidentWorker_CaravanMeeting.TryExecuteWorker))]
-    [HarmonyPostfix]
+    [HarmonyPrefix]
+    public static void CaravanMeetingExecuting() => BeginCapture();
+
+    [HarmonyPatch(typeof(IncidentWorker_CaravanMeeting), nameof(IncidentWorker_CaravanMeeting.TryExecuteWorker))]
+    [HarmonyFinalizer]
     public static void CaravanMeetingExecuted(IncidentParms parms, bool __result)
-    {
-        if (__result)
-            TryOpenEncounter(EncounterKind.Meeting, parms);
-    }
+        => EndCapture(EncounterKind.Meeting, parms, __result);
 
     [HarmonyPatch(typeof(IncidentWorker_CaravanDemand), nameof(IncidentWorker_CaravanDemand.TryExecuteWorker))]
-    [HarmonyPostfix]
+    [HarmonyPrefix]
+    public static void CaravanDemandExecuting() => BeginCapture();
+
+    [HarmonyPatch(typeof(IncidentWorker_CaravanDemand), nameof(IncidentWorker_CaravanDemand.TryExecuteWorker))]
+    [HarmonyFinalizer]
     public static void CaravanDemandExecuted(IncidentParms parms, bool __result)
+        => EndCapture(EncounterKind.Demand, parms, __result);
+
+    private static void BeginCapture()
     {
-        if (__result)
-            TryOpenEncounter(EncounterKind.Demand, parms);
+        capturingDialog = true;
+        capturedDialog = null;
     }
 
-    private static void TryOpenEncounter(EncounterKind kind, IncidentParms parms)
+    private static void EndCapture(EncounterKind kind, IncidentParms parms, bool executed)
+    {
+        var dialog = capturedDialog;
+
+        // Cleared in a finalizer so a throwing incident cannot leave the flag set and mis-attribute the
+        // next unrelated dialog to a caravan encounter.
+        capturingDialog = false;
+        capturedDialog = null;
+
+        if (executed)
+            TryOpenEncounter(kind, parms, dialog);
+    }
+
+    /// <summary>
+    /// Records the dialog the running incident pushed.
+    ///
+    /// Deliberately not a <c>WindowOfType</c> search after the fact. That returns whatever dialog of the
+    /// type is topmost, which is not necessarily the one this incident just created -- a client that
+    /// already had a node-tree dialog open would bind the wrong one, or fail to bind and skip creating the
+    /// session. Session creation calls UniqueIDsManager.GetNextID, a counter every client must advance in
+    /// lockstep, so one client skipping it is an immediate desync. Identifying the dialog by when it was
+    /// added keeps that decision identical everywhere.
+    /// </summary>
+    [HarmonyPatch(typeof(WindowStack), nameof(WindowStack.Add))]
+    [HarmonyPostfix]
+    public static void WindowAdded(Window window)
+    {
+        if (capturingDialog && window is Dialog_NodeTreeWithFactionInfo dialog)
+            capturedDialog = dialog;
+    }
+
+    private static void TryOpenEncounter(EncounterKind kind, IncidentParms parms, Dialog_NodeTreeWithFactionInfo dialog)
     {
         if (Multiplayer.Client == null)
             return;
@@ -51,16 +99,17 @@ public static class CaravanEncounterPatches
         if (caravan.Faction is not { IsPlayer: true })
             return;
 
-        // The dialog vanilla just pushed. Its options carry the closures that actually carry out each
-        // outcome, which is what the session needs to bind to.
-        if (Find.WindowStack?.WindowOfType<Dialog_NodeTreeWithFactionInfo>() is not { } dialog)
+        if (dialog == null)
             return;
 
+        // Derived from the node the incident just built, so it is the same on every client: the option
+        // list follows from the incident's own deterministic execution, not from anything local.
         var options = MapOptions(kind, dialog.curNode);
         if (options == null)
         {
             // A mod reshaped the node tree. Leaving the session uncreated keeps the legacy behaviour --
-            // no pause, but also no half-wired encounter whose buttons route somewhere unexpected.
+            // no pause, but also no half-wired encounter whose buttons route somewhere unexpected. Safe to
+            // branch on because the option count is identical on every client.
             MpLog.Debug(
                 $"MP: caravan {kind} node tree has an unexpected shape " +
                 $"({dialog.curNode?.options?.Count ?? 0} options); leaving it on the legacy path");
