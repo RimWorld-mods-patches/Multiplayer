@@ -172,7 +172,21 @@ namespace Multiplayer.Common
             return nowTicks - createdAtTicks >= timeoutTicks;
         }
 
-        /// <summary>Whether a policy needs the timeout at all.</summary>
+        /// <summary>
+        /// Whether a policy needs the timeout at all.
+        ///
+        /// KNOWN INERT. This answers true only for GlobalFallback, and under GlobalFallback the timeout can
+        /// never fire: the pause zeroes the world tickable, which stops AsyncWorldTimeComp.Tick, which is
+        /// what drives TickWorldSessions and so the session Tick that would evaluate HasTimedOut. Under
+        /// OwnerFactionAssets that tick does keep running, but there this answers false. The condition and
+        /// its reachability are exactly inverted, so no configuration currently auto-resolves.
+        ///
+        /// Fixing it needs a pause-independent yet synchronized clock -- TickPatch.Timer, which advances in
+        /// TickPatch regardless of any tickable's rate -- and a two-step release, because the outcome must
+        /// still be applied inside a proper tick context: expire the pause first, then let the now-live
+        /// Tick apply DefaultChoiceFor. Deliberately left out of this change; an unanswered encounter
+        /// currently holds its pause until a player answers it.
+        /// </summary>
         public static bool NeedsTimeout(EncounterPausePolicy policy)
             => policy == EncounterPausePolicy.GlobalFallback;
 
