@@ -175,13 +175,19 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         if (!CaravanEncounterRules.AssertsPause(currentState))
             return false;
 
-        // A session that cannot carry out a choice must never hold a pause, because under GlobalFallback
-        // the pause starves the very tick that would clean it up: pausing the world tickable stops
-        // AsyncWorldTimeComp.Tick, which is what drives TickWorldSessions and therefore Tick() below.
-        // A save/load drops choiceActions, so without this a reloaded encounter pauses the world forever
-        // with no way back -- its dialog is gone too, so there is not even a button left to press.
-        // Declining to pause hands the world one tick, which is all Tick() needs to retire the session.
-        if (!CanApplyOutcomes)
+        // A session that can no longer be carried through must never hold a pause, because under
+        // GlobalFallback the pause starves the very tick that would clean it up: pausing the world
+        // tickable stops AsyncWorldTimeComp.Tick, which drives TickWorldSessions and therefore Tick()
+        // below. Every recovery path lives in that Tick, so a session in this state pauses the world
+        // permanently and Tick never runs to notice.
+        //
+        // Two ways in, both observed as softlocks. A save/load drops the transient choiceActions, leaving
+        // a session that can pause but never resolve and whose dialog is gone too, so there is not even a
+        // button left to press. And the target caravan can be destroyed mid-decision -- Tick is supposed
+        // to invalidate the session for exactly that, but it never runs to do it.
+        //
+        // Declining to pause hands the world one tick, which is all Tick needs to retire the session.
+        if (!CanApplyOutcomes || !IsSessionValid)
             return false;
 
         return CaravanEncounterRules.PolicyPauses(
