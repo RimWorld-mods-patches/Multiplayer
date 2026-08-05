@@ -33,7 +33,7 @@ public static class CaravanEncounterPatches
 
     [HarmonyPatch(typeof(IncidentWorker_CaravanMeeting), nameof(IncidentWorker_CaravanMeeting.TryExecuteWorker))]
     [HarmonyPrefix]
-    public static void CaravanMeetingExecuting() => BeginCapture();
+    public static void CaravanMeetingExecuting(IncidentParms parms) => BeginCapture(parms);
 
     [HarmonyPatch(typeof(IncidentWorker_CaravanMeeting), nameof(IncidentWorker_CaravanMeeting.TryExecuteWorker))]
     [HarmonyFinalizer]
@@ -42,7 +42,7 @@ public static class CaravanEncounterPatches
 
     [HarmonyPatch(typeof(IncidentWorker_CaravanDemand), nameof(IncidentWorker_CaravanDemand.TryExecuteWorker))]
     [HarmonyPrefix]
-    public static void CaravanDemandExecuting() => BeginCapture();
+    public static void CaravanDemandExecuting(IncidentParms parms) => BeginCapture(parms);
 
     [HarmonyPatch(typeof(IncidentWorker_CaravanDemand), nameof(IncidentWorker_CaravanDemand.TryExecuteWorker))]
     [HarmonyFinalizer]
@@ -59,10 +59,15 @@ public static class CaravanEncounterPatches
     /// </summary>
     private static readonly List<CaravanEncounterSession> displacedDialogs = new();
 
-    private static void BeginCapture()
+    private static void BeginCapture(IncidentParms parms)
     {
         capturingDialog = true;
         capturedDialog = null;
+
+        // Vanilla's worker jumps the camera to the caravan it fired on, and the incident runs on every
+        // client. Hold the view still for players this encounter does not belong to.
+        if (!CaravanEncounterViewLock.OwnedLocally(parms))
+            CaravanEncounterViewLock.Begin();
 
         displacedDialogs.Clear();
 
@@ -96,9 +101,17 @@ public static class CaravanEncounterPatches
         // next unrelated dialog to a caravan encounter.
         capturingDialog = false;
         capturedDialog = null;
+        CaravanEncounterViewLock.End();
 
         if (executed)
             TryOpenEncounter(kind, parms, dialog);
+
+        // Always, not just when the encounter was refused. Adding this incident's dialog displaced
+        // whatever encounter dialog was showing, and that is just as wrong when the new one belongs to
+        // another faction: the player watching their own encounter had it cleared off the screen by
+        // someone else's. Restoring only ever puts back a window this client owns and had open a moment
+        // ago, so it cannot fight with a dialog this client legitimately just received.
+        RestoreDisplacedDialogs();
     }
 
     /// <summary>
@@ -161,10 +174,6 @@ public static class CaravanEncounterPatches
             // Closing it is deterministic. Every client ran the same incident and refused for the same
             // reason on the same tick, so every client drops the same dialog.
             dialog.Close(doCloseSound: false);
-
-            // Adding it already displaced the encounter the player was looking at, so put that back --
-            // otherwise a refused second encounter silently clears the first off the screen.
-            RestoreDisplacedDialogs();
             return;
         }
 

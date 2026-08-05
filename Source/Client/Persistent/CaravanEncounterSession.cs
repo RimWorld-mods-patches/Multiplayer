@@ -358,7 +358,10 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
             return;
         }
 
-        option.action();
+        // The outcome runs on every client, and vanilla's Attack branch jumps the camera to the pawns it
+        // spawns on the generated map. That is right for the faction that chose it and wrong for everyone
+        // else, who were dropped onto a battle that is not theirs.
+        CaravanEncounterViewLock.While(LocalPlayerOwnsThis, option.action);
     }
 
     /// <summary>Ends the encounter normally and releases its pause.</summary>
