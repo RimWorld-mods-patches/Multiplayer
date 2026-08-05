@@ -216,7 +216,7 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         if (!LocalPlayerOwnsThis || !CaravanEncounterRules.AssertsPause(currentState) || dialogWindow == null)
             return null;
 
-        return new FloatMenuOption("MpCaravanEncounterSession".Translate(), OpenWindow);
+        return new FloatMenuOption("MpCaravanEncounterSession".Translate(), () => OpenWindow());
     }
 
     /// <summary>
@@ -224,7 +224,7 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
     /// and this restores the view rather than rebuilding it -- the dialog holds the closures that carry
     /// out whatever the player picks.
     /// </summary>
-    public void OpenWindow()
+    public void OpenWindow(bool jumpToTarget = true)
     {
         if (!LocalPlayerOwnsThis || !IsSessionValid || dialogWindow == null)
             return;
@@ -232,9 +232,15 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         if (!Find.WindowStack.IsOpen(dialogWindow))
             Find.WindowStack.Add(dialogWindow);
 
-        if (targetCaravan != null)
+        // Skipped when merely putting back a window vanilla displaced, because that runs inside a
+        // synchronized command: jumping the camera would move the local view and the local selection
+        // mid-command, on one client only.
+        if (jumpToTarget && targetCaravan != null)
             CameraJumper.TryJumpAndSelect(targetCaravan);
     }
+
+    /// <summary>Whether this session's window is on the stack right now. Local view state, never synced.</summary>
+    public bool IsWindowOpen => dialogWindow != null && Find.WindowStack.IsOpen(dialogWindow);
 
     /// <summary>Drops the owner's local window without touching the decision it represents.</summary>
     public void CloseWindowLocally()

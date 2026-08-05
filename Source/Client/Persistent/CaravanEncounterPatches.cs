@@ -49,10 +49,43 @@ public static class CaravanEncounterPatches
     public static void CaravanDemandExecuted(IncidentParms parms, bool __result)
         => EndCapture(EncounterKind.Demand, parms, __result);
 
+    /// <summary>
+    /// Encounter windows that were on the stack when the incident began.
+    ///
+    /// Recorded because WindowStack.Add opens with an unconditional RemoveWindowsOfType, so pushing this
+    /// incident's dialog silently drops any encounter dialog already showing -- they share a type, and
+    /// only one of that type may be on the stack at a time. Kept so a dialog displaced that way can be put
+    /// back if the incident turns out to have nothing to replace it with. Local view state only.
+    /// </summary>
+    private static readonly List<CaravanEncounterSession> displacedDialogs = new();
+
     private static void BeginCapture()
     {
         capturingDialog = true;
         capturedDialog = null;
+
+        displacedDialogs.Clear();
+
+        var sessions = Multiplayer.WorldComp?.sessionManager?.AllSessions;
+        if (sessions == null)
+            return;
+
+        for (int i = 0; i < sessions.Count; i++)
+            if (sessions[i] is CaravanEncounterSession encounter && encounter.IsWindowOpen)
+                displacedDialogs.Add(encounter);
+    }
+
+    /// <summary>
+    /// Puts back an encounter dialog that this incident's own dialog displaced, once it is clear nothing
+    /// took its place. Only ever restores a window this client had open a moment ago, so a dialog the
+    /// player deliberately minimised stays minimised.
+    /// </summary>
+    private static void RestoreDisplacedDialogs()
+    {
+        for (int i = 0; i < displacedDialogs.Count; i++)
+            displacedDialogs[i].OpenWindow(jumpToTarget: false);
+
+        displacedDialogs.Clear();
     }
 
     private static void EndCapture(EncounterKind kind, IncidentParms parms, bool executed)
@@ -118,7 +151,22 @@ public static class CaravanEncounterPatches
 
         var session = CreateSessionFor(kind, caravan, dialog.faction);
         if (session == null)
+        {
+            // No session adopted this dialog -- normally because the owner already has a live encounter.
+            // Leaving it on screen is not the harmless outcome it looks like: the legacy
+            // RegisterSyncDialogNodeTree registrations for these two incidents are gone, so its options
+            // are not synchronized by anything, and a click would run vanilla's outcome on this client
+            // alone. It also carries no minimise button, since nothing owns it.
+            //
+            // Closing it is deterministic. Every client ran the same incident and refused for the same
+            // reason on the same tick, so every client drops the same dialog.
+            dialog.Close(doCloseSound: false);
+
+            // Adding it already displaced the encounter the player was looking at, so put that back --
+            // otherwise a refused second encounter silently clears the first off the screen.
+            RestoreDisplacedDialogs();
             return;
+        }
 
         session.BindPresentation(options, dialog);
 
