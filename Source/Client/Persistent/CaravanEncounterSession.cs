@@ -358,10 +358,13 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
             return;
         }
 
-        // The outcome runs on every client, and vanilla's Attack branch jumps the camera to the pawns it
-        // spawns on the generated map. That is right for the faction that chose it and wrong for everyone
-        // else, who were dropped onto a battle that is not theirs.
-        CaravanEncounterViewLock.While(LocalPlayerOwnsThis, option.action);
+        // Run under the owning faction, not whichever faction each client happens to play. Vanilla's
+        // outcomes are written in terms of Faction.OfPlayer, and the Attack branch defers its body to a
+        // long event that outlives this command's own faction context.
+        CaravanEncounterOutcomeScope.RunOutcome(
+            targetCaravan?.Faction,
+            LocalPlayerOwnsThis,
+            option.action);
     }
 
     /// <summary>Ends the encounter normally and releases its pause.</summary>

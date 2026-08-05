@@ -66,8 +66,8 @@ public static class CaravanEncounterPatches
 
         // Vanilla's worker jumps the camera to the caravan it fired on, and the incident runs on every
         // client. Hold the view still for players this encounter does not belong to.
-        if (!CaravanEncounterViewLock.OwnedLocally(parms))
-            CaravanEncounterViewLock.Begin();
+        if (!CaravanEncounterOutcomeScope.OwnedLocally(parms))
+            CaravanEncounterOutcomeScope.BeginIncident();
 
         displacedDialogs.Clear();
 
@@ -101,7 +101,7 @@ public static class CaravanEncounterPatches
         // next unrelated dialog to a caravan encounter.
         capturingDialog = false;
         capturedDialog = null;
-        CaravanEncounterViewLock.End();
+        CaravanEncounterOutcomeScope.EndIncident();
 
         if (executed)
             TryOpenEncounter(kind, parms, dialog);
