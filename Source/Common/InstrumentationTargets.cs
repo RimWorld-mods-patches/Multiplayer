@@ -19,9 +19,6 @@ namespace Multiplayer.Common
         /// Contract: exclude anything Harmony cannot build a wrapper around. Harmony patches by emitting
         /// a replacement that wraps the original's body, so a method with no body to wrap produces
         /// malformed IL and the runtime rejects it.
-        ///
-        /// NOT YET COMPLETE. Extern methods are not excluded, which is what
-        /// InstrumentationTargetsTest demonstrates.
         /// </summary>
         public static bool ShouldInstrument(MethodBase method)
         {
@@ -31,6 +28,12 @@ namespace Multiplayer.Common
             if (method.Name == LoggerMethodName)
                 return false;
 
+            // Extern, so the body lives in a native library and there is nothing to wrap. This assembly
+            // declares two, in ArbiterWindowFix. Tested via MethodAttributes rather than a dedicated
+            // property, because MethodBase exposes no IsPInvokeImpl on every target framework here.
+            if ((method.Attributes & MethodAttributes.PinvokeImpl) != 0)
+                return false;
+
             // Property getters are noise: they run constantly and say nothing about control flow.
             if (method.Name.StartsWith("get_"))
                 return false;
@@ -38,7 +41,9 @@ namespace Multiplayer.Common
             if (method.IsAbstract)
                 return false;
 
-            if (method.IsGenericMethod)
+            // Open generic parameters, whether the method's own or inherited from its declaring type,
+            // leave nothing concrete to emit against.
+            if (method.IsGenericMethod || method.ContainsGenericParameters)
                 return false;
 
             var declaring = method.DeclaringType;
