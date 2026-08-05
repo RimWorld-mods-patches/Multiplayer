@@ -216,6 +216,14 @@ public class CaravanEncounterSession : ExposableSession, ISessionWithCreationRes
         if (!LocalPlayerOwnsThis || !CaravanEncounterRules.AssertsPause(currentState) || dialogWindow == null)
             return null;
 
+        // The colonist bar asks every session once per group, and draws a button on any group that answers.
+        // Answering unconditionally put one on every colony and every caravan the player has, all opening
+        // the same dialog, when only one caravan is actually in an encounter. MpTradeSession scopes itself
+        // the same way, by the map its negotiator is standing on; a caravan encounter has no map, so the
+        // caravan is what identifies the group.
+        if (entry.pawn?.GetCaravan() != targetCaravan)
+            return null;
+
         return new FloatMenuOption("MpCaravanEncounterSession".Translate(), () => OpenWindow());
     }
 
