@@ -16,7 +16,6 @@ namespace Multiplayer.Client
     public static class SteamIntegration
     {
         // Callbacks stored in static fields so they don't get garbage collected
-        private static Callback<P2PSessionRequest_t> sessionReq;
         private static Callback<FriendRichPresenceUpdate_t> friendRchpUpdate;
         private static Callback<GameRichPresenceJoinRequested_t> gameJoinReq;
         private static Callback<PersonaStateChange_t> personaChange;
@@ -29,29 +28,6 @@ namespace Multiplayer.Client
         public static void InitCallbacks()
         {
             RimWorldAppId = SteamUtils.GetAppID();
-
-            sessionReq = Callback<P2PSessionRequest_t>.Create(req =>
-            {
-                ServerLog.Log($"Received P2P session request from {req.m_steamIDRemote}");
-                var session = Multiplayer.session;
-                if (Multiplayer.LocalServer?.settings.steam == true && !session.pendingSteam.Contains(req.m_steamIDRemote))
-                {
-                    if (Multiplayer.settings.autoAcceptSteam)
-                        SteamNetworking.AcceptP2PSessionWithUser(req.m_steamIDRemote);
-                    else
-                    {
-                        session.pendingSteam.Add(req.m_steamIDRemote);
-                        PendingPlayerWindow.EnqueueJoinRequest(req.m_steamIDRemote, (joinReq, accepted) =>
-                        {
-                            if(joinReq.steamId.HasValue && accepted) AcceptPlayerJoinRequest(joinReq.steamId.Value);
-                        });
-                    }
-                    session.knownUsers.Add(req.m_steamIDRemote);
-                    session.NotifyChat();
-
-                    SteamFriends.RequestUserInformation(req.m_steamIDRemote, true);
-                }
-            });
 
             friendRchpUpdate = Callback<FriendRichPresenceUpdate_t>.Create(update =>
             {
@@ -82,12 +58,83 @@ namespace Multiplayer.Client
                 Callback<AvatarImageLoaded_t>.Create(loaded => SteamImages.GetTexture(loaded.m_iImage, force: true));
         }
 
+        // Entry point for an incoming ISteamNetworkingSockets connection (state Connecting on the host's listen
+        // socket). Replaces the old P2PSessionRequest_t handler. Fires on the Unity main thread.
+        public static void OnIncomingConnection(HSteamNetConnection conn, CSteamID remoteId)
+        {
+            ServerLog.Log($"Incoming Steam connection from {remoteId}");
+
+            if (Multiplayer.LocalServer?.settings.steam != true)
+            {
+                SteamNetworkingSockets.CloseConnection(conn, 0, "", false);
+                return;
+            }
+
+            var session = Multiplayer.session;
+            if (session == null) return;
+
+            if (Multiplayer.settings.autoAcceptSteam)
+            {
+                AcceptConnection(conn, remoteId);
+            }
+            else if (session.pendingSteam.TryGetValue(remoteId, out var pending))
+            {
+                // A prompt for this peer is already open. Point it at the newest connection (a distinct handle)
+                // and close the superseded one; the timed-out old handle would otherwise linger.
+                if (pending != conn)
+                    SteamNetworkingSockets.CloseConnection(pending, 0, "", false);
+                session.pendingSteam[remoteId] = conn;
+            }
+            else
+            {
+                session.pendingSteam[remoteId] = conn;
+                PendingPlayerWindow.EnqueueJoinRequest(remoteId, (joinReq, accepted) =>
+                {
+                    if (!joinReq.steamId.HasValue) return;
+                    if (accepted)
+                        AcceptPlayerJoinRequest(joinReq.steamId.Value);
+                    else
+                        RejectPlayerJoinRequest(joinReq.steamId.Value);
+                });
+            }
+
+            if (!session.knownUsers.Contains(remoteId))
+                session.knownUsers.Add(remoteId);
+            session.NotifyChat();
+
+            SteamFriends.RequestUserInformation(remoteId, true);
+        }
+
         public static void AcceptPlayerJoinRequest(CSteamID id)
         {
-            SteamNetworking.AcceptP2PSessionWithUser(id);
-            Multiplayer.session.pendingSteam.Remove(id);
+            var session = Multiplayer.session;
+            if (session == null || !session.pendingSteam.TryGetValue(id, out var conn)) return;
+            session.pendingSteam.Remove(id);
+
+            AcceptConnection(conn, id);
 
             Messages.Message("MpSteamAccepted".Translate(), MessageTypeDefOf.PositiveEvent, false);
+        }
+
+        private static void RejectPlayerJoinRequest(CSteamID id)
+        {
+            var session = Multiplayer.session;
+            if (session == null || !session.pendingSteam.TryGetValue(id, out var conn)) return;
+            session.pendingSteam.Remove(id);
+
+            SteamNetworkingSockets.CloseConnection(conn, 0, "", false);
+        }
+
+        private static void AcceptConnection(HSteamNetConnection conn, CSteamID remoteId)
+        {
+            var result = SteamNetworkingSockets.AcceptConnection(conn);
+            if (result != EResult.k_EResultOK)
+            {
+                ServerLog.Error($"Failed to accept Steam connection from {remoteId}: {result}");
+                return;
+            }
+
+            SteamP2PIntegration.CreateServerPlayer(conn, remoteId);
         }
 
         private static Stopwatch lastSteamUpdate = Stopwatch.StartNew();
@@ -99,7 +146,7 @@ namespace Multiplayer.Client
             if (lastSteamUpdate.ElapsedMilliseconds < 1000) return;
 
             var localSteam = Multiplayer.LocalServer?.settings.steam ?? false;
-            var remoteSteam = (Multiplayer.Client as SteamClientConn)?.remoteId;
+            var remoteSteam = (Multiplayer.Client as SteamSocketClientConn)?.remoteId;
             if (localSteam != lastLocalSteam || remoteSteam != lastRemoteSteam)
             {
                 string connect;
