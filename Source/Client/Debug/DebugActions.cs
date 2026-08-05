@@ -337,12 +337,7 @@ namespace Multiplayer.Client
         static void LogAllPatch()
         {
             foreach (var method in Assembly.GetExecutingAssembly().DefinedTypes.SelectMany(t => t.DeclaredMethods))
-                if (method.Name != "MultiplayerMethodCallLogger" &&
-                    !method.Name.StartsWith("get_") &&
-                    !method.IsGenericMethod &&
-                    method.DeclaringType?.IsGenericType is false &&
-                    method.DeclaringType?.BaseType != typeof(MulticastDelegate) &&
-                    !method.IsAbstract)
+                if (InstrumentationTargets.ShouldInstrument(method))
                     Multiplayer.harmony.Patch(
                         method,
                         prefix: new HarmonyMethod(typeof(MpDebugActions), nameof(MultiplayerMethodCallLogger))
