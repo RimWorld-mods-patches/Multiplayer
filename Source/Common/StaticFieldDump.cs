@@ -22,8 +22,9 @@ namespace Multiplayer.Common
         /// is arbitrary code and can fail for reasons that have nothing to do with the dump. A caller
         /// wants the other few thousand fields even when one is unreadable.
         ///
-        /// NOT YET HONOURED. This implementation propagates, which is what StaticFieldDumpTest
-        /// demonstrates.
+        /// MonoMod is the case that forced this: it ships every platform's interop types in one assembly,
+        /// so the ones belonging to another operating system throw DllNotFoundException the moment they
+        /// are touched. That is true on every platform -- only the type names change.
         /// </summary>
         /// <param name="field">The static field to read.</param>
         /// <param name="value">The value read, or null when it could not be read.</param>
@@ -31,9 +32,20 @@ namespace Multiplayer.Common
         /// <returns>Whether the value was read.</returns>
         public static bool TryReadStaticValue(FieldInfo field, out object value, out string failure)
         {
-            value = field.GetValue(null);
-            failure = null;
-            return true;
+            try
+            {
+                value = field.GetValue(null);
+                failure = null;
+                return true;
+            }
+            catch (Exception e)
+            {
+                // The base exception, because the interesting part is what the initializer actually hit.
+                // Reporting TypeInitializationException would name the mechanism and hide the cause.
+                value = null;
+                failure = e.GetBaseException().GetType().Name;
+                return false;
+            }
         }
 
         /// <summary>
@@ -41,12 +53,18 @@ namespace Multiplayer.Common
         ///
         /// Contract: report whatever loaded. An assembly referencing something absent cannot enumerate
         /// all of its types, but it still resolves most of them, and those are worth dumping.
-        ///
-        /// NOT YET HONOURED. This implementation propagates.
         /// </summary>
         public static IEnumerable<Type> TypesOf(Assembly assembly)
         {
-            return assembly.GetTypes();
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException e)
+            {
+                // Types is padded with nulls for the entries that failed to load.
+                return e.Types.Where(t => t != null);
+            }
         }
     }
 }
