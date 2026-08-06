@@ -273,13 +273,10 @@ jobs:
         fi
 
         # Pass assets on create: gh drafts, uploads, then publishes in one flow.
-        # Explicit --latest=true so this channel can own "Latest" even as a
-        # prerelease (GitHub only does that when make_latest is forced).
         gh release create "$TAG" \
           --target "${{ github.sha }}" \
           --title "Integration" \
           --notes-file ".github/workflows/integration-notes.md" \
-          --prerelease \
           --latest=true \
           "$MOD_ZIP" \
           "$SERVER_ZIP"
