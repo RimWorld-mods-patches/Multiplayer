@@ -273,8 +273,6 @@ jobs:
         fi
 
         # Pass assets on create: gh drafts, uploads, then publishes in one flow.
-        # GitHub rejects prerelease/draft as Latest (HTTP 422), so publish a
-        # normal release with --latest=true for the Integration download channel.
         gh release create "$TAG" \
           --target "${{ github.sha }}" \
           --title "Integration" \
