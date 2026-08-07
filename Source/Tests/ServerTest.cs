@@ -76,11 +76,22 @@ public class ServerTest
 
         ConnectClient(port, typeof(TestLoadingKeepAliveState));
 
+        // Players.Count == 0 already holds before the client connects, so waiting on it alone proves
+        // nothing. Observe the client arrive and then leave: both conditions start out false.
         WaitUntil(
-            nameof(LoadingStateHandlesKeepAliveWhileWaitingForJoinPoint),
+            $"{nameof(LoadingStateHandlesKeepAliveWhileWaitingForJoinPoint)}.joined",
+            () => server.playerManager.Players.Count == 1,
+            () => $"Players={server.playerManager.Players.Count} " +
+                  $"CreatingJoinPoint={server.worldData.CreatingJoinPoint}");
+
+        WaitUntil(
+            $"{nameof(LoadingStateHandlesKeepAliveWhileWaitingForJoinPoint)}.left",
             () => server.playerManager.Players.Count == 0,
             () => $"Players={server.playerManager.Players.Count} " +
                   $"CreatingJoinPoint={server.worldData.CreatingJoinPoint}");
+
+        // The loading state was blocked on this join point, so reaching here means it completed.
+        Assert.That(server.worldData.CreatingJoinPoint, Is.False);
     }
 
     [Test]
