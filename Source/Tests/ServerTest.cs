@@ -108,8 +108,16 @@ public class ServerTest
 
         ConnectClient(port, typeof(TestJoiningState));
 
+        // The seeded player above already satisfies Players.Count == 1, so waiting on that alone
+        // would pass without the client ever joining. Wait for it to arrive, then to leave.
         WaitUntil(
-            nameof(StandaloneJoinWithExistingPlayer_DoesNotStartJoinPoint),
+            $"{nameof(StandaloneJoinWithExistingPlayer_DoesNotStartJoinPoint)}.joined",
+            () => server.playerManager.Players.Count == 2,
+            () => $"Players={server.playerManager.Players.Count} " +
+                  $"CreatingJoinPoint={server.worldData.CreatingJoinPoint}");
+
+        WaitUntil(
+            $"{nameof(StandaloneJoinWithExistingPlayer_DoesNotStartJoinPoint)}.left",
             () => server.playerManager.Players.Count == 1,
             () => $"Players={server.playerManager.Players.Count} " +
                   $"CreatingJoinPoint={server.worldData.CreatingJoinPoint}");
