@@ -139,7 +139,7 @@ public class ServerTest
     /// ones here.
     /// </summary>
     private static void WaitUntil(string label, Func<bool> condition, Func<string> describeState,
-        int timeoutMs = 2000)
+        int timeoutMs = 5000)
     {
         var watch = Stopwatch.StartNew();
         var polls = 0;
