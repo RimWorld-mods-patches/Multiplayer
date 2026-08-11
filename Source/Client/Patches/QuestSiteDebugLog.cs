@@ -167,17 +167,11 @@ namespace Multiplayer.Client.Patches
                     var objs = string.Join(",",
                         Find.WorldObjects.ObjectsAt(tile).Select(o => $"{o.def?.defName}:{o.def?.canHaveMap}"));
 
-                    // Re-evaluate concurrently: cached tile data is built inside a Parallel.For,
-                    // so if validity is unstable under concurrency, this counts the flips.
-                    var disagree = 0;
-                    System.Threading.Tasks.Parallel.For(0, 16, _ =>
-                    {
-                        if (TileFinder.IsValidTileForNewSettlement(tile) != valid)
-                            System.Threading.Interlocked.Increment(ref disagree);
-                    });
-
+                    // Deliberately no concurrent re-evaluation here: calling
+                    // IsValidTileForNewSettlement from several threads is what corrupts the state
+                    // being measured, so probing that way perturbs the next query's answer.
                     sb.Append(
-                        $"\n  probe tile={tileId} valid={valid} race={disagree} objs=[{objs}] " +
+                        $"\n  probe tile={tileId} valid={valid} objs=[{objs}] " +
                         $"settl={Find.WorldObjects.AnySettlementBaseAt(tile)} " +
                         $"adj={Find.WorldObjects.AnySettlementBaseAtOrAdjacent(tile, out _)} " +
                         $"mapParent={Find.WorldObjects.AnyMapParentAt(tile)} " +
