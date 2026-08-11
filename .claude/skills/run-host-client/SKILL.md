@@ -94,6 +94,11 @@ list from `~/Library/Application Support/RimWorld` (`ModsConfig.xml`, `Prefs.xml
 (`--no-seed-config`), the run starts from fresh config — the Multiplayer mod isn't in the
 list and the run is pointless.
 
+Saves live *inside* the save-data folder, so isolating it would otherwise hide the saves
+you see when launching from Steam. Seeding therefore symlinks `Saves`, `MpDesyncs` and
+`MpReplays` back to the real folder: both roles load your existing games, and desync
+captures land where you normally look for them instead of in a temporary run folder.
+
 ## Windows
 
 `RimWorldWin64-HostClient.ps1` at the repo root is the Windows counterpart. It's untracked

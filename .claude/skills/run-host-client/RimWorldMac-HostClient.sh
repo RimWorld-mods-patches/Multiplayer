@@ -125,6 +125,15 @@ seed_savedata() {
     for f in "$src_cfg"/Mod_*.xml; do
         if [[ -f "$f" ]]; then cp "$f" "$dest_cfg/"; fi
     done
+    # Saves and the multiplayer captures live under the save-data folder, so an
+    # isolated instance would show an empty save list and strand its desync
+    # captures in the run folder. Link the real ones in instead of copying, so
+    # both roles read your games and write captures back where you expect them.
+    for f in Saves MpDesyncs MpReplays; do
+        if [[ -d "$CONFIG_SOURCE/$f" ]] && [[ ! -e "$1/$f" ]]; then
+            ln -s "$CONFIG_SOURCE/$f" "$1/$f"
+        fi
+    done
     # RimWorld re-applies its own screen size from Prefs.xml on top of Unity's
     # window keys, so the copied one has to agree with the tile or it undoes it.
     if (( TILE )) && [[ -f "$dest_cfg/Prefs.xml" ]]; then
