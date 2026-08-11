@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Threading.Tasks;
 using Multiplayer.Client.AsyncTime;
 using Multiplayer.Client.Util;
 using RimWorld.QuestGen;
@@ -771,53 +770,6 @@ namespace Multiplayer.Client.Patches
         {
             if (Multiplayer.Client != null && (Multiplayer.Ticking || Multiplayer.ExecutingCmds))
                 __instance.DirtyCache();
-        }
-    }
-
-    // RegenerateCache bakes each tile's validity in a Parallel.For, but
-    // TileFinder.IsValidTileForNewSettlement reads global game state and is not thread safe:
-    // evaluated concurrently it returns a different answer than it does on its own, so the cached
-    // validity of a tile depends on how the rebuild happened to be scheduled. Clients then run
-    // identical RNG against different candidate lists and place quest sites on different tiles.
-    // Rebuild sequentially in MP, like the single-batch query job above.
-    [HarmonyPatch(typeof(FastTileFinder), nameof(FastTileFinder.RegenerateCache))]
-    static class FastTileFinderCacheRebuildDeterminismPatch
-    {
-        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-        {
-            var parallelFor = AccessTools.Method(typeof(Parallel), nameof(Parallel.For),
-                [typeof(int), typeof(int), typeof(Action<int>)]);
-            var sequentialFor = AccessTools.Method(typeof(FastTileFinderCacheRebuildDeterminismPatch), nameof(SequentialFor));
-
-            var patched = 0;
-
-            foreach (var inst in instructions)
-            {
-                if (inst.Calls(parallelFor))
-                {
-                    yield return new CodeInstruction(OpCodes.Call, sequentialFor);
-                    patched++;
-                }
-                else
-                {
-                    yield return inst;
-                }
-            }
-
-            const int expectedPatches = 1;
-            if (patched != expectedPatches)
-                Log.Error($"Patching FastTileFinder cache rebuild failed. Expected patches: {expectedPatches}, actual patches: {patched}. There was either an issue or the bug was fixed in RimWorld itself.");
-        }
-
-        static ParallelLoopResult SequentialFor(int fromInclusive, int toExclusive, Action<int> body)
-        {
-            if (Multiplayer.Client == null)
-                return Parallel.For(fromInclusive, toExclusive, body);
-
-            for (var i = fromInclusive; i < toExclusive; i++)
-                body(i);
-
-            return default;
         }
     }
 
