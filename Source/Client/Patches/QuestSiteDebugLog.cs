@@ -163,19 +163,30 @@ namespace Multiplayer.Client.Patches
                     var dist = Mathf.Acos(UnityEngine.Vector3.Dot(originCenter.normalized, center.normalized))
                                * layer.Radius / layer.AverageTileSize;
 
-                    var valid = TileFinder.IsValidTileForNewSettlement(tile);
+                    // Let vanilla report which check rejected the tile rather than reproducing its
+                    // conditions here: the explicit sub-checks below all said "not blocking" while
+                    // the verdict was False, so the deciding term is one they do not cover.
+                    var reason = new StringBuilder();
+                    var valid = TileFinder.IsValidTileForNewSettlement(tile, reason);
                     var objs = string.Join(",",
                         Find.WorldObjects.ObjectsAt(tile).Select(o => $"{o.def?.defName}:{o.def?.canHaveMap}"));
+                    var worldTile = Find.WorldGrid[tile];
 
                     // Deliberately no concurrent re-evaluation here: calling
                     // IsValidTileForNewSettlement from several threads is what corrupts the state
                     // being measured, so probing that way perturbs the next query's answer.
                     sb.Append(
-                        $"\n  probe tile={tileId} valid={valid} objs=[{objs}] " +
+                        $"\n  probe tile={tileId} valid={valid} reason=\"{reason}\" objs=[{objs}] " +
                         $"settl={Find.WorldObjects.AnySettlementBaseAt(tile)} " +
                         $"adj={Find.WorldObjects.AnySettlementBaseAtOrAdjacent(tile, out _)} " +
                         $"mapParent={Find.WorldObjects.AnyMapParentAt(tile)} " +
                         $"map={Current.Game.FindMap(tile) != null} " +
+                        $"peaceTalks={Find.WorldObjects.AnyWorldObjectAt<PeaceTalks>(tile)} " +
+                        $"camp={Find.WorldObjects.AnyWorldObjectAt<Camp>(tile)} " +
+                        $"tileValid={tile.Valid} biome={worldTile.PrimaryBiome?.defName} " +
+                        $"canBuildBase={worldTile.PrimaryBiome?.canBuildBase} " +
+                        $"biomeImpl={worldTile.PrimaryBiome?.implemented} " +
+                        $"hilliness={worldTile.hilliness} " +
                         $"passable={Find.WorldPathGrid.PassableFast(tile)} " +
                         $"field={Find.WorldReachability.GetLocalFieldId(tile)} " +
                         $"dist={dist:R}");
