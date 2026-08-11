@@ -143,10 +143,47 @@ namespace Multiplayer.Client.Patches
                 $"FastTileFinder.Query randBefore={__state}\n  args: {args}\n  result: {QuestSiteDebugLog.Describe(__result)}\n{Probe(__args)}");
         }
 
+        private static bool dumpedPatches;
+
+        // A tile whose hilliness reads Impassable must fail IsValidTileForNewSettlement, yet it
+        // passed on both machines before the quest burst. Vanilla cannot do that, so log who else
+        // is instrumenting the method (and the query) once per session.
+        private static void DumpPatches()
+        {
+            if (dumpedPatches) return;
+            dumpedPatches = true;
+
+            foreach (var target in new[]
+                     {
+                         AccessTools.Method(typeof(TileFinder), nameof(TileFinder.IsValidTileForNewSettlement)),
+                         AccessTools.Method(typeof(SettleInEmptyTileUtility), nameof(SettleInEmptyTileUtility.CanCreateMapAt)),
+                         AccessTools.Method(typeof(FastTileFinder), nameof(FastTileFinder.RegenerateCache)),
+                         AccessTools.Method(typeof(FastTileFinder), nameof(FastTileFinder.Query))
+                     })
+            {
+                if (target == null) continue;
+
+                var info = Harmony.GetPatchInfo(target);
+                if (info == null)
+                {
+                    QuestSiteDebugLog.Write($"patches on {target.Name}: none");
+                    continue;
+                }
+
+                string Owners(IEnumerable<Patch> patches) =>
+                    string.Join(",", patches.Select(p => $"{p.owner}:{p.PatchMethod.DeclaringType?.Name}.{p.PatchMethod.Name}"));
+
+                QuestSiteDebugLog.Write(
+                    $"patches on {target.Name}: prefixes=[{Owners(info.Prefixes)}] postfixes=[{Owners(info.Postfixes)}] " +
+                    $"transpilers=[{Owners(info.Transpilers)}] finalizers=[{Owners(info.Finalizers)}]");
+            }
+        }
+
         private static string Probe(object[] args)
         {
             try
             {
+                DumpPatches();
                 var origin = (PlanetTile)args[0].GetType().GetField("origin").GetValue(args[0]);
                 if (!origin.Valid) return "  probe: invalid origin";
 
