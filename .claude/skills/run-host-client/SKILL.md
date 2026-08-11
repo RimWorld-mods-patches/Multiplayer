@@ -39,10 +39,10 @@ commands.
 ## 3. Launch
 
 ```bash
-./RimWorldMac-HostClient.sh --isolate-savedata
+./RimWorldMac-HostClient.sh
 ```
 
-This is the recommended default (see below for why). The script:
+No flags needed — the useful behaviour is all default. The script:
 
 - creates one timestamped run folder with `Player-Host.log`, `Player-Client.log`, and
   `arbiter_log.txt`;
@@ -54,8 +54,6 @@ This is the recommended default (see below for why). The script:
 
 | Flag | Effect |
 | --- | --- |
-| `--isolate-savedata` | Give each role its own save-data folder, seeded from the real mod list. |
-| `--no-seed-config` | With `--isolate-savedata`, skip copying `ModsConfig.xml`/`Prefs.xml`/`KeyPrefs.xml`/`Mod_*.xml` — fresh config, so the Multiplayer mod is **not** loaded. Script warns when used. |
 | `--no-tile` | Don't place the windows; leave window prefs untouched. |
 | `--dry-run` | Print what would happen, launch nothing. |
 | `--game-root PATH` | RimWorld install dir (contains `RimWorldMac.app`). |
@@ -79,25 +77,23 @@ client on the left half of the screen, host on the right.
 - That plist is keyed by bundle id and therefore **shared** by both instances, so whichever
   instance quits last writes its geometry back over it. A later solo launch may open at the
   tile size — just resize once. `--no-tile` leaves window prefs untouched entirely.
-- The 50/50 split only fully works with `--isolate-savedata`. Window *position* is honored
-  either way, but RimWorld re-applies its own `screenWidth`/`screenHeight` from whichever
-  `Prefs.xml` it loads, overriding Unity's resolution keys. Only isolated mode gives the
-  script a private `Prefs.xml` it can patch to match the tile — without it the windows are
-  offset left/right but keep normal size and overlap (the script prints a note when this
-  applies).
+- Window *position* comes from that shared plist, but *size* does not: RimWorld re-applies
+  its own `screenWidth`/`screenHeight` from the `Prefs.xml` it loads, overriding Unity's
+  resolution keys. The per-role config below is what lets the script patch each `Prefs.xml`
+  to half-screen width, so the two windows tile instead of overlapping.
 
-## Why `--isolate-savedata` is the default recommendation
+## What each role gets
 
-It gives host and client separate save-data folders *and* seeds each with the real mod
-list from `~/Library/Application Support/RimWorld` (`ModsConfig.xml`, `Prefs.xml`,
-`KeyPrefs.xml`, all `Mod_*.xml`), so the Multiplayer mod actually loads. Without seeding
-(`--no-seed-config`), the run starts from fresh config — the Multiplayer mod isn't in the
-list and the run is pointless.
+Every run gives host and client their own save-data folder (`-savedatafolder=`), holding a
+copy of your config from `~/Library/Application Support/RimWorld` — `ModsConfig.xml`,
+`Prefs.xml`, `KeyPrefs.xml` and all `Mod_*.xml` — so both instances load the same mods,
+including Multiplayer itself.
 
-Saves live *inside* the save-data folder, so isolating it would otherwise hide the saves
-you see when launching from Steam. Seeding therefore symlinks `Saves`, `MpDesyncs` and
-`MpReplays` back to the real folder: both roles load your existing games, and desync
-captures land where you normally look for them instead of in a temporary run folder.
+Only the config is per-role. `Saves`, `MpDesyncs` and `MpReplays` are symlinked back to the
+real folder, so both instances open the same saved games you see when launching from Steam,
+and desync captures land where you normally look for them rather than in a temporary run
+folder. Keeping `Prefs.xml` per-role is what stops the two live instances overwriting each
+other's settings, and what makes the window tiling possible.
 
 ## Windows
 

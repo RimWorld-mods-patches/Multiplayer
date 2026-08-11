@@ -13,17 +13,23 @@
 # needs Automation consent. Instead the two windows are tiled — client on the left
 # half of the screen, host on the right — which is the visual tell.
 #
-# That works by writing Unity's window keys into ~/Library/Preferences/
+# Placement works by writing Unity's window keys into ~/Library/Preferences/
 # ludeon.rimworld.plist just before each launch; Unity reads them at startup, so
 # staggering the two launches places them independently. Note this plist is keyed
 # by bundle id and therefore SHARED by both instances (RimWorld's own Prefs.xml
 # does not hold window position), so whichever instance quits last writes its
 # geometry back over it. Pass --no-tile to leave your window prefs alone.
 #
+# Each role always gets its own save-data folder, holding a copy of your config
+# (mod list, prefs, per-mod settings) with Saves, MpDesyncs and MpReplays
+# symlinked back to the real folder. So both instances load the same mods and the
+# same saved games you see from Steam, while keeping separate Prefs.xml — which
+# is what stops two live instances overwriting each other's settings and what
+# lets each window be sized to its half of the screen.
+#
 # Usage:
 #   ./RimWorldMac-HostClient.sh
 #   ./RimWorldMac-HostClient.sh --host-delay 3
-#   ./RimWorldMac-HostClient.sh --isolate-savedata
 #   ./RimWorldMac-HostClient.sh --no-tile
 #   ./RimWorldMac-HostClient.sh --dry-run
 
@@ -34,8 +40,6 @@ CONFIG_SOURCE="$HOME/Library/Application Support/RimWorld"
 RUNS_ROOT=""
 RUN_ID=""
 HOST_DELAY_SEC=2
-ISOLATE_SAVEDATA=0
-SEED_CONFIG=1
 STARTUP_TIMEOUT_SEC=120
 DRY_RUN=0
 TILE=1
@@ -52,8 +56,6 @@ Options:
   --runs-root PATH        Where run folders are created  [<game-root>/MpTestRuns]
   --run-id ID             Name of this run folder        [timestamp]
   --host-delay SECONDS    Pause between client and host  [2]
-  --isolate-savedata      Give each role its own save-data folder
-  --no-seed-config        With --isolate-savedata, do NOT copy the real mod list
   --no-tile               Don't place the windows; leave window prefs untouched
   --startup-timeout SECS  How long to wait for each log to appear  [120]
   --dry-run               Print what would happen, launch nothing
@@ -71,8 +73,6 @@ while [[ $# -gt 0 ]]; do
         --run-id)          RUN_ID="${2:?--run-id needs a value}"; shift 2 ;;
         --host-delay)      HOST_DELAY_SEC="${2:?--host-delay needs a number}"; shift 2 ;;
         --startup-timeout) STARTUP_TIMEOUT_SEC="${2:?--startup-timeout needs a number}"; shift 2 ;;
-        --isolate-savedata) ISOLATE_SAVEDATA=1; shift ;;
-        --no-seed-config)  SEED_CONFIG=0; shift ;;
         --no-tile)         TILE=0; shift ;;
         --dry-run)         DRY_RUN=1; shift ;;
         -h|--help)         usage; exit 0 ;;
@@ -102,18 +102,11 @@ host_arbiter_log="$host_dir/arbiter_log.txt"
 host_save="$host_dir/SaveData"
 client_save="$client_dir/SaveData"
 
-if (( ISOLATE_SAVEDATA )); then
-    if (( SEED_CONFIG )); then
-        save_note="isolated per role, mod list seeded from $CONFIG_SOURCE"
-    else
-        save_note="ISOLATED (fresh ModsConfig — not your Steam list)"
-    fi
-else
-    save_note="default ~/Library/Application Support/RimWorld (shared mods/config)"
-fi
+save_note="config split per role, saves and captures shared with $CONFIG_SOURCE"
 
-# Copy just enough config that an isolated instance still loads the same mods —
-# without this the Multiplayer mod itself is missing and the run is pointless.
+# Each role gets its own config so the two live instances cannot overwrite each
+# other's Prefs.xml, and so each window can be sized to its half of the screen.
+# The mod list has to come along or the Multiplayer mod is not even loaded.
 seed_savedata() {
     local src_cfg="$CONFIG_SOURCE/Config" dest_cfg="$1/Config" f
     mkdir -p "$dest_cfg"
@@ -182,11 +175,9 @@ start_role() {
     local role="$1" work_dir="$2" log_path="$3" save_path="$4"
     local -a args=(-logfile "$log_path")
 
-    if (( ISOLATE_SAVEDATA )); then
-        mkdir -p "$save_path"
-        if (( SEED_CONFIG )); then seed_savedata "$save_path"; fi
-        args+=("-savedatafolder=$save_path")
-    fi
+    mkdir -p "$save_path"
+    seed_savedata "$save_path"
+    args+=("-savedatafolder=$save_path")
 
     printf '[%s] cwd=%s\n' "$role" "$work_dir"
     printf '[%s] log=%s\n' "$role" "$log_path"
@@ -244,9 +235,6 @@ EOF
 printf 'Run id:  %s\n' "$RUN_ID"
 printf 'Run dir: %s\n' "$run_dir"
 printf 'Save/config: %s\n' "$save_note"
-if (( ISOLATE_SAVEDATA )) && (( ! SEED_CONFIG )); then
-    printf 'warning: isolated save data without seeding — the Multiplayer mod will NOT be loaded\n' >&2
-fi
 printf '\n'
 
 if (( TILE )); then
@@ -254,14 +242,7 @@ if (( TILE )); then
     tile_w=$(( SCREEN_W / 2 ))
     tile_h=$(( SCREEN_H - 80 ))
     tile_y=40
-    printf 'Layout: %sx%s screen — CLIENT left half, HOST right half\n' "$SCREEN_W" "$SCREEN_H"
-    # Only the isolated seed lets us set the size too: RimWorld re-applies the
-    # width/height from whichever Prefs.xml it loads, overriding Unity's keys.
-    if (( ! ISOLATE_SAVEDATA )); then
-        printf 'note: without --isolate-savedata the windows are offset but keep your normal\n'
-        printf '      size, so they will overlap. Add --isolate-savedata for a clean split.\n'
-    fi
-    printf '\n'
+    printf 'Layout: %sx%s screen — CLIENT left half, HOST right half\n\n' "$SCREEN_W" "$SCREEN_H"
     place_window client 0 "$tile_y" "$tile_w" "$tile_h"
 fi
 
