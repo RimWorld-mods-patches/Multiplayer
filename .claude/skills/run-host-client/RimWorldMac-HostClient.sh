@@ -28,10 +28,10 @@
 # lets each window be sized to its half of the screen.
 #
 # Usage:
-#   ./RimWorldMac-HostClient.sh
-#   ./RimWorldMac-HostClient.sh --host-delay 3
-#   ./RimWorldMac-HostClient.sh --no-tile
-#   ./RimWorldMac-HostClient.sh --dry-run
+#   ./.claude/skills/run-host-client/RimWorldMac-HostClient.sh
+#   ./.claude/skills/run-host-client/RimWorldMac-HostClient.sh --host-delay 3
+#   ./.claude/skills/run-host-client/RimWorldMac-HostClient.sh --no-tile
+#   ./.claude/skills/run-host-client/RimWorldMac-HostClient.sh --dry-run
 
 set -euo pipefail
 

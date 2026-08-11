@@ -11,6 +11,9 @@ launching a second one. Each run gets its own timestamped folder holding `Player
 `Player-Client.log`, and `arbiter_log.txt`, then the script returns while both games keep
 running.
 
+The copy of that script inside this skill directory is the single source of truth — don't
+recreate one at the repo root, or the two will drift again.
+
 ## 1. Build
 
 No local `dotnet` on this machine — use the `docker-build` skill.
@@ -39,7 +42,7 @@ commands.
 ## 3. Launch
 
 ```bash
-./RimWorldMac-HostClient.sh
+./.claude/skills/run-host-client/RimWorldMac-HostClient.sh
 ```
 
 No flags needed — the useful behaviour is all default. The script:
