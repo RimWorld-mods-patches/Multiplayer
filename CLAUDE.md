@@ -34,7 +34,7 @@ called `integration`.
 Tracked on `integration`, must never reach an upstream PR:
 
 - `CLAUDE.md` (this file)
-- `.claude/skills/` — `docker-build`, `prepare-upstream-pr`
+- `.claude/skills/` — `docker-build`, `prepare-upstream-pr`, `run-host-client`
 
 `.claude/settings.local.json` is ignored globally on this machine, not by the repo.
 
