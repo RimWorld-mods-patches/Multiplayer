@@ -145,13 +145,13 @@ Never open the PR or file the issue unprompted — the user reviews first. With 
 **No dependencies** — give the cross-fork PR link:
 
 ```
-https://github.com/rwmt/Multiplayer/compare/dev...romangr:Multiplayer:pr/<topic>?expand=1
+https://github.com/rwmt/Multiplayer/compare/dev...RimWorld-mods-patches:Multiplayer:pr/<topic>?expand=1
 ```
 
 State the commit subject, files touched, and that it builds against `dev`.
 
 **Dependencies found** — do *not* suggest the PR link as ready. Give a prefilled issue on
-the **fork** (`romangr/Multiplayer`), since this is our own tracking, and print the title
+the **fork** (`RimWorld-mods-patches/Multiplayer`), since this is our own tracking, and print the title
 and body as plain text too so the user can paste them if the URL is unwieldy.
 
 Build the URL with proper encoding:
@@ -161,7 +161,7 @@ python3 - <<'EOF'
 import urllib.parse
 title = "..."
 body  = "..."
-print("https://github.com/romangr/Multiplayer/issues/new?"
+print("https://github.com/RimWorld-mods-patches/Multiplayer/issues/new?"
       + urllib.parse.urlencode({"title": title, "body": body}))
 EOF
 ```

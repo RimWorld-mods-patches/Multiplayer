@@ -11,7 +11,7 @@ first and are upstreamed selectively.
 | Ref | Meaning |
 | --- | --- |
 | `origin` | **Upstream**, `rwmt/Multiplayer`. Not the fork — the name is historical and misleading. |
-| `fork` | **The fork**, `romangr/Multiplayer`. |
+| `fork` | **The fork**, `RimWorld-mods-patches/Multiplayer`. Transferred from `romangr/Multiplayer` — GitHub redirects the git protocol but not web URLs, so hand-built `compare`/`issues/new` links must use the new owner or they 404. |
 | `dev` | Mirror of `origin/dev`. Never commit here. Upstream PRs target this, not `master`. |
 | `integration` | The fork's integrated state — everything we actually run, including work not yet upstreamed. Feature branches start and land here. |
 | `pr/*` | Squashed, upstream-ready branches cut from `dev`. Created by the `prepare-upstream-pr` skill; not merged back into `integration`. |
