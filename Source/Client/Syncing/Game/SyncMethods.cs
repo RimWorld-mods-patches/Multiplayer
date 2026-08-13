@@ -199,8 +199,11 @@ namespace Multiplayer.Client
             SyncMethod.Register(typeof(ShipUtility), nameof(ShipUtility.StartupHibernatingParts)).CancelIfAnyArgNull();
 
             // Dialog_NodeTree
-            Sync.RegisterSyncDialogNodeTree(typeof(IncidentWorker_CaravanMeeting), nameof(IncidentWorker_CaravanMeeting.TryExecuteWorker));
-            Sync.RegisterSyncDialogNodeTree(typeof(IncidentWorker_CaravanDemand), nameof(IncidentWorker_CaravanDemand.TryExecuteWorker));
+            // CaravanMeeting and CaravanDemand used to be registered here. They go through
+            // CaravanEncounterSession now: the option-index path this helper installs cannot say which
+            // dialog a click belonged to or which faction sent it, so concurrent encounters mis-routed
+            // between each other and any player could answer any faction's. The helper itself stays for
+            // every other node-tree dialog that still relies on it.
 
             SyncMethod.Register(typeof(CompAnimalPenMarker), nameof(CompAnimalPenMarker.RemoveForceDisplayedAnimal));
             SyncMethod.Register(typeof(CompAnimalPenMarker), nameof(CompAnimalPenMarker.AddForceDisplayedAnimal));
