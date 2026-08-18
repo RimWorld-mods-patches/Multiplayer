@@ -750,28 +750,4 @@ namespace Multiplayer.Client.Patches
             Multiplayer.Client != null ? length : UnityData.GetIdealBatchCount(length);
     }
 
-    // The per-tile cache behind Query/Closest (validForSettlement, reachability region) is rebuilt
-    // lazily on the first query after a DirtyCache — and queries also come from unsynced UI paths
-    // (e.g. the gravship landing dialog), so each client can snapshot tile validity at a different
-    // game moment. Per-tile DirtyTile updates are dropped while the cache is dirty, and
-    // settlement-adjacency validity never dirties the affected neighbor tiles, so such a
-    // difference persists for the whole session and desyncs quest site placement. Force synced
-    // queries to rebuild the cache from the current synced world state.
-    [HarmonyPatch]
-    static class FastTileFinderSyncedQueryRebuildPatch
-    {
-        static IEnumerable<MethodBase> TargetMethods()
-        {
-            yield return AccessTools.Method(typeof(FastTileFinder), nameof(FastTileFinder.Query));
-            yield return AccessTools.Method(typeof(FastTileFinder), nameof(FastTileFinder.Closest));
-        }
-
-        static void Prefix(FastTileFinder __instance)
-        {
-            if (Multiplayer.Client != null && (Multiplayer.Ticking || Multiplayer.ExecutingCmds))
-                __instance.DirtyCache();
-        }
-    }
-
-
 }
