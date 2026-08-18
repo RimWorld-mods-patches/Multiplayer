@@ -750,5 +750,4 @@ namespace Multiplayer.Client.Patches
             Multiplayer.Client != null ? length : UnityData.GetIdealBatchCount(length);
     }
 
-
 }
