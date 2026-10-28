@@ -20,6 +20,8 @@ public sealed class LiveTestMod : Mod
     {
         Sync.RegisterSyncMethod(typeof(Actions), nameof(Actions.CreateFixture)).SetContext(SyncContext.CurrentMap);
         Sync.RegisterSyncMethod(typeof(Actions), nameof(Actions.AddToStack)).SetContext(SyncContext.CurrentMap);
+        Sync.RegisterSyncMethod(typeof(Actions), nameof(Actions.GeneratePawn)).SetContext(SyncContext.CurrentMap);
+        Sync.RegisterSyncMethod(typeof(Actions), nameof(Actions.GenerateSecondMap)).SetContext(SyncContext.CurrentMap);
         Log.Message("[MP-LIVE] registered");
     }
 }
@@ -28,6 +30,7 @@ public sealed class LiveTestMod : Mod
 public sealed class FixtureState : GameComponent
 {
     public int mapId = -1, thingId = -1, zoneId = -1, sequence;
+    public int generatedPawnId = -1, secondMapId = -1;
     public FixtureState(Game game) { }
     public override void ExposeData()
     {
@@ -35,10 +38,12 @@ public sealed class FixtureState : GameComponent
         Scribe_Values.Look(ref thingId, "mpLiveThing", -1);
         Scribe_Values.Look(ref zoneId, "mpLiveZone", -1);
         Scribe_Values.Look(ref sequence, "mpLiveSequence");
+        Scribe_Values.Look(ref generatedPawnId, "mpLivePawn", -1);
+        Scribe_Values.Look(ref secondMapId, "mpLiveSecondMap", -1);
     }
 }
 
-public static class Actions
+public static partial class Actions
 {
     public const string Category = "Multiplayer live tests";
     private static FixtureState State => Current.Game.GetComponent<FixtureState>();
@@ -65,7 +70,7 @@ public static class Actions
             directAddress = "127.0.0.1:30512", lan = false, steam = false,
             syncConfigs = false, debugMode = true, devModeScope = DevModeScope.Everyone,
             desyncTraces = false, pauseOnJoin = true, pauseOnDesync = true,
-            autosaveInterval = 0, autoJoinPoint = 0
+            autosaveInterval = 0, autoJoinPoint = AutoJoinPointFlags.Autosave, asyncTime = true
         };
         Require(HostWindow.HostProgrammatically(settings), "Host startup was rejected");
         Emit("host_requested", new { port = 30512 });
@@ -83,22 +88,35 @@ public static class Actions
     [DebugAction(Category, "Live: snapshot", allowedGameStates = AllowedGameStates.Invalid)]
     public static void Snapshot()
     {
-        var state = Current.Game?.GetComponent<FixtureState>();
+        var playing = MP.Client?.State == ConnectionStateEnum.ClientPlaying;
+        var state = playing ? Current.Game?.GetComponent<FixtureState>() : null;
         var map = state == null ? null : Find.Maps.FirstOrDefault(m => m.uniqueID == state.mapId);
         var stack = map?.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == state.thingId);
         var zone = map?.zoneManager.AllZones.OfType<Zone_Stockpile>().FirstOrDefault(z => z.ID == state.zoneId);
         Emit("snapshot", new
         {
-            connected = MP.Client?.State == ConnectionStateEnum.ClientPlaying,
+            connected = playing,
+            entry_scene = GenScene.InEntryScene,
             desynced = MP.session?.desynced ?? false,
             players = MP.session?.players.Where(p => p.status == PlayerStatus.Playing).Select(p => p.username).OrderBy(n => n).ToArray(),
+            player_id = MP.session?.playerId ?? -1,
             simulating = TickPatch.Simulating, timer = TickPatch.Timer,
             last_valid_tick = MP.game?.sync.lastValidTick ?? -1,
-            game_tick = Current.Game == null ? -1 : Find.TickManager.TicksGame,
+            game_tick = !playing || Current.Game == null ? -1 : Find.TickManager.TicksGame,
             map_id = state?.mapId ?? -1, thing_id = state?.thingId ?? -1,
             zone_id = state?.zoneId ?? -1, sequence = state?.sequence ?? -1,
             stack_count = stack?.stackCount ?? -1,
             allows_steel = zone?.settings.filter.Allows(ThingDefOf.Steel),
+            generated_pawn = GeneratedPawnSnapshot(map, state),
+            maps = !playing || MP.game == null || Current.Game == null ? null : Find.Maps.OrderBy(m => m.uniqueID)
+                .Select(m => new { id = m.uniqueID, ticks = m.AsyncTime().mapTicks,
+                    speed = m.AsyncTime().DesiredTimeSpeed.ToString(), viewers = m.AsyncTime().CurrentPlayerCount }).ToArray(),
+            second_map_id = state?.secondMapId ?? -1,
+            current_map = Current.Game == null ? -1 : Find.CurrentMap?.uniqueID ?? -1,
+            rejoin_reconstructed = gameBeforeRejoin != null && Current.Game != null && !ReferenceEquals(gameBeforeRejoin, Current.Game),
+            reload_reconstructed = gameBeforeReload != null && Current.Game != null && !ReferenceEquals(gameBeforeReload, Current.Game),
+            snapshot_tick = MP.session?.dataSnapshot?.CachedAtTime ?? -1,
+            ideology = ModsConfig.IdeologyActive, anomaly = ModsConfig.AnomalyActive,
             pawns = map?.mapPawns.FreeColonists.OrderBy(p => p.thingIDNumber)
                 .Select(p => new { id = p.thingIDNumber, name = p.Name.ToStringFull }).ToArray()
         });
@@ -180,7 +198,14 @@ public static class Actions
     private static void SetSpeed(TimeSpeed speed)
     {
         Require(MP.Client?.State == ConnectionStateEnum.ClientPlaying, "No playing connection");
-        MP.Client.SendCommand(CommandType.GlobalTimeSpeed, ScheduledCommand.Global, (byte)speed);
+        if (speed == TimeSpeed.Paused)
+            MP.Client.SendCommand(CommandType.PauseAll, ScheduledCommand.Global);
+        else
+        {
+            foreach (var map in Find.Maps)
+                MP.Client.SendCommand(CommandType.MapTimeSpeed, map.uniqueID, (byte)speed);
+            MP.Client.SendCommand(CommandType.GlobalTimeSpeed, ScheduledCommand.Global, (byte)speed);
+        }
         Emit("speed_requested", new { speed = speed.ToString() });
     }
 }

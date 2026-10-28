@@ -7,14 +7,21 @@ import json
 from pathlib import Path
 import re
 import time
+import zipfile
 from urllib.request import ProxyHandler, build_opener
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-FIXTURE_KEYS = ("map_id", "thing_id", "zone_id", "sequence", "stack_count", "allows_steel", "pawns")
+FIXTURE_KEYS = ("map_id", "thing_id", "zone_id", "sequence", "stack_count", "allows_steel", "pawns", "generated_pawn", "second_map_id")
 
 
 def fixture(snapshot):
     return {key: snapshot[key] for key in FIXTURE_KEYS}
+
+
+def logged_errors(text):
+    # Multiplayer's network logger can put semantic errors inside an INFO line.
+    return [line for line in ANSI.sub("", text).splitlines()
+            if re.match(r"^\d\d:\d\d:\d\d\s+(ERROR|FATAL)\b", line) or "INFO MpServerLog Error:" in line]
 
 
 def assert_pair(snapshots):
@@ -56,11 +63,11 @@ class Peer:
         self.evidence.append({"peer": self.role, "action": name, "invocation": result})
         return result
 
-    def event(self, name, phase):
+    def event(self, name, phase, timeout=15):
         stat = self.log.stat()
         offset = stat.st_size
         self.action(name)
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + timeout
         while True:
             current = self.log.stat()
             if current.st_ino != stat.st_ino or current.st_size < offset:
@@ -184,6 +191,104 @@ def main():
                 raise AssertionError("Client sync opinions did not advance")
             return {"before": before, "advanced": advanced, "paused": stable}
         step(6, advance)
+
+        def pawn():
+            before = wait_pair(peers)
+            host.action("generate pawn")
+            return wait_pair(peers, lambda p: p[0]["generated_pawn"] is not None and len(p[0]["pawns"]) == len(before[0]["pawns"]) + 1)
+        step(7, pawn)
+
+        # Hook installation is testable without DLC. Actual role-assignment fixtures are not.
+        features = wait_pair(peers)[0]
+        for index, feature, expansion in ((8, "ideology", "Ideology"), (9, "anomaly", "Anomaly")):
+            if not features[feature]:
+                cases[index].update(status="BLOCKED", reason=expansion + " is not installed/enabled; full ritual fixture requires it")
+        step(15, lambda: [p.event("ritual hooks", "ritual_hooks_checked") for p in peers])
+
+        def reload():
+            before = wait_pair(peers)
+            for p in peers:
+                p.event("arm reload", "reload_armed")
+            host.action("save reload")
+            after = wait_pair(peers, lambda p: all(v["reload_reconstructed"] and v["snapshot_tick"] > before[i]["snapshot_tick"] for i,v in enumerate(p)), timeout=90)
+            events = [p.event("save archive", "archive_saved") for p in peers]
+            for event in events:
+                path = Path(event["path"])
+                if not path.is_file() or path.stat().st_size != event["bytes"]:
+                    raise AssertionError("Multiplayer archive was not written")
+                with zipfile.ZipFile(path) as archive:
+                    if archive.testzip() is not None or not archive.namelist():
+                        raise AssertionError("Invalid Multiplayer save archive")
+            if fixture(before[0]) != fixture(after[0]):
+                raise AssertionError("Save/reload changed the fixture")
+            return {"before": before, "after": after, "reloads": events}
+        step(10, reload)
+
+        def rejoin():
+            before = wait_pair(peers)
+            client.action("rejoin")
+            after = wait_pair(peers, lambda p: p[1]["rejoin_reconstructed"] and p[1]["last_valid_tick"] >= before[1]["last_valid_tick"], timeout=120)
+            if fixture(before[0]) != fixture(after[0]):
+                raise AssertionError("Rejoin changed the fixture")
+            return {"before": before, "after": after}
+        step(11, rejoin)
+
+        def maps():
+            host.action("second map")
+            both = wait_pair(peers, lambda p: p[0]["second_map_id"] >= 0 and all(len(v["maps"]) == 2 for v in p), timeout=120)
+            first_id, second_id = both[0]["map_id"], both[0]["second_map_id"]
+            def by_id(value, map_id):
+                return next(m for m in value["maps"] if m["id"] == map_id)
+            client.action("view second map")
+            split = wait_pair(peers, lambda p: all(by_id(v, first_id)["viewers"] == 1 and by_id(v, second_id)["viewers"] == 1 for v in p))
+            host.action("resume first map")
+            advancing = wait_pair(peers, lambda p: all(by_id(v, first_id)["ticks"] > by_id(split[i], first_id)["ticks"] + 120 for i,v in enumerate(p)))
+            host.action("pause")
+            paused = wait_pair(peers, lambda p: all(m["speed"] == "Paused" for v in p for m in v["maps"]))
+            if any(by_id(v, second_id)["ticks"] != by_id(split[i], second_id)["ticks"] for i,v in enumerate(paused)):
+                raise AssertionError("Paused second map advanced with first map")
+            client.action("view first map")
+            together = wait_pair(peers, lambda p: all(by_id(v, first_id)["viewers"] == 2 and by_id(v, second_id)["viewers"] == 0 for v in p))
+            return {"split": split, "advancing": advancing, "paused": paused, "together": together}
+        step(12, maps)
+        step(13, lambda: [p.event("marker cleanup", "markers_checked") for p in peers])
+
+        def reconnect():
+            before = wait_pair(peers)
+            client.event("disconnect", "disconnected")
+            deadline = time.monotonic() + 30
+            while len(host.snapshot()["players"]) != 1:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Server did not observe client disconnect")
+                time.sleep(.5)
+            while not client.snapshot()["entry_scene"]:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Client did not return to the entry scene")
+                time.sleep(.5)
+            client.action("join")
+            def caught_up(p):
+                return (p[1]["player_id"] != before[1]["player_id"] and len(p[1]["maps"]) == 2
+                        and all(m["viewers"] == (2 if m["id"] == v["map_id"] else 0) for v in p for m in v["maps"]))
+            after = wait_pair(peers, caught_up, timeout=120)
+            if fixture(before[0]) != fixture(after[0]):
+                raise AssertionError("Fresh connection lost fixture state")
+            return {"before": before, "after": after}
+        step(16, reconnect)
+
+        def desync():
+            before = wait_pair(peers)
+            client.event("inject desync", "desync_injected")
+            host.action("resume")
+            deadline = time.monotonic() + 45
+            while True:
+                value = client.snapshot()
+                if value["desynced"]:
+                    return {"before": before, "detected": value}
+                if time.monotonic() >= deadline:
+                    raise AssertionError("Intentional RNG mismatch was not detected")
+                time.sleep(.5)
+        # Intentional divergence must be the final case; subsequent pair checks would be invalid.
+        step(14, desync)
     except Exception as failure:
         error = str(failure)
         if current:
@@ -198,8 +303,9 @@ def main():
             pass
         game_errors = {}
         for peer in peers:
-            lines = ANSI.sub("", peer.log.read_text(errors="replace")).splitlines()
-            game_errors[peer.role] = [line for line in lines if re.match(r"^\d\d:\d\d:\d\d\s+(ERROR|FATAL)\b", line)]
+            game_errors[peer.role] = logged_errors(peer.log.read_text(errors="replace"))
+        if not error and any(game_errors.values()):
+            error = "Case assertions passed, but game/network log errors were observed; inspect game_errors"
         report = {"status": "FAIL" if error or any(game_errors.values()) else "PASS", "duration_seconds": round(time.time()-started, 2),
                   "error": error, "cases": cases, "game_errors": game_errors, "evidence": evidence, "session": config}
         (run/"report.json").write_text(json.dumps(report, indent=2))

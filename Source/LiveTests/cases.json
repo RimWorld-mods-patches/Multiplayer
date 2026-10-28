@@ -6,12 +6,14 @@
   {"id":"MP05","name":"Stockpile hidden-filter cache reuse on both peers","implemented":true},
   {"id":"MP06","name":"Production stockpile filter synchronization in both directions","implemented":true},
   {"id":"MP07","name":"Resume, advance, pause and compare peers","implemented":true},
-  {"id":"MP08","name":"Pawn generation and deterministic name hashes","implemented":false},
+  {"id":"MP08","name":"Pawn generation and deterministic name hashes","implemented":true},
   {"id":"MP09","name":"Normal ritual setup and assignments","implemented":false},
   {"id":"MP10","name":"Psychic ritual setup and assignments","implemented":false},
-  {"id":"MP11","name":"Save/reload preserves Multiplayer fixture and session state","implemented":false},
-  {"id":"MP12","name":"Late join and reconnect preserve fixtures","implemented":false},
-  {"id":"MP13","name":"Independent map speeds and viewer counts","implemented":false},
-  {"id":"MP14","name":"UI marker cleanup after an injected exception","implemented":false},
-  {"id":"MP15","name":"Desync detector catches an intentional mismatch","implemented":false}
+  {"id":"MP11","name":"Save/reload preserves Multiplayer fixture and session state","implemented":true},
+  {"id":"MP12","name":"Rejoin reconstructs the client and preserves fixtures","implemented":true},
+  {"id":"MP13","name":"Independent map speeds and viewer counts","implemented":true},
+  {"id":"MP14","name":"UI marker cleanup after an injected exception","implemented":true},
+  {"id":"MP15","name":"Desync detector catches an intentional mismatch","implemented":true},
+  {"id":"MP16","name":"Harmony 3 ritual hooks are installed for both widget types","implemented":true},
+  {"id":"MP17","name":"Fresh connection replays commands since the join point","implemented":true}
 ]
