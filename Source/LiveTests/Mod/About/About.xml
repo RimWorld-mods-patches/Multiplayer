@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>Multiplayer Live Tests</name>
+  <author>Multiplayer contributors</author>
+  <packageId>rwmt.multiplayer.livetests</packageId>
+  <supportedVersions><li>1.7</li></supportedVersions>
+  <description>Disposable test instrumentation. Adds API-callable setup and validation actions. Enable only in isolated test profiles.</description>
+  <modDependencies><li><packageId>rwmt.multiplayer</packageId><displayName>Multiplayer</displayName><downloadUrl>https://github.com/rwmt/Multiplayer</downloadUrl></li></modDependencies>
+  <loadAfter><li>rwmt.multiplayer</li></loadAfter>
+</ModMetaData>

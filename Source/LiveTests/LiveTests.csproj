@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <LangVersion>12</LangVersion>
+    <AssemblyName>MultiplayerLiveTests</AssemblyName>
+    <TestModOutput>$(MSBuildThisFileDirectory)../../artifacts/live-tests/mod</TestModOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="$(RimWorldRefVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="RimWorld.MultiplayerAPI" Version="0.6.0" ExcludeAssets="runtime" />
+    <Reference Include="Multiplayer">
+      <HintPath>../../1.7/AssembliesCustom/Multiplayer.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MultiplayerCommon">
+      <HintPath>../../1.7/AssembliesCustom/MultiplayerCommon.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="StageTestMod" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(TestModOutput)/1.7/Assemblies" />
+    <Copy SourceFiles="Mod/About/About.xml" DestinationFolder="$(TestModOutput)/About" />
+    <Copy SourceFiles="Mod/LoadFolders.xml" DestinationFolder="$(TestModOutput)" />
+  </Target>
+</Project>

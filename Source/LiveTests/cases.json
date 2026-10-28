@@ -1,0 +1,17 @@
+[
+  {"id":"MP01","name":"Host and direct join","implemented":true},
+  {"id":"MP02","name":"Synchronized stockpile fixture","implemented":true},
+  {"id":"MP03","name":"Host command reaches both peers","implemented":true},
+  {"id":"MP04","name":"Client command reaches both peers","implemented":true},
+  {"id":"MP05","name":"Stockpile hidden-filter cache reuse on both peers","implemented":true},
+  {"id":"MP06","name":"Production stockpile filter synchronization in both directions","implemented":true},
+  {"id":"MP07","name":"Resume, advance, pause and compare peers","implemented":true},
+  {"id":"MP08","name":"Pawn generation and deterministic name hashes","implemented":false},
+  {"id":"MP09","name":"Normal ritual setup and assignments","implemented":false},
+  {"id":"MP10","name":"Psychic ritual setup and assignments","implemented":false},
+  {"id":"MP11","name":"Save/reload preserves Multiplayer fixture and session state","implemented":false},
+  {"id":"MP12","name":"Late join and reconnect preserve fixtures","implemented":false},
+  {"id":"MP13","name":"Independent map speeds and viewer counts","implemented":false},
+  {"id":"MP14","name":"UI marker cleanup after an injected exception","implemented":false},
+  {"id":"MP15","name":"Desync detector catches an intentional mismatch","implemented":false}
+]

@@ -38,6 +38,12 @@ installation and must not be packaged. See [the metadata audit](Source/RuntimeTe
 for local validation and its limitations. Full host/join, reload/rejoin, stockpile
 filter/cache, and ritual scenarios still require live game testing.
 
+The [API-driven live test suite](Source/LiveTests/README.md) runs two muted native
+RimWorld 1.7 processes with isolated profiles and existing RIMAPI instrumentation.
+It automates host/join, synchronized actions, stockpile cache/filter checks and
+time control, then writes a report with evidence from both peers. It is separate
+from the metadata audit and does not use Computer Use.
+
 ## Versioned CI packages
 
 The Workshop mod currently includes RimWorld 1.5 and 1.6. New packages retain
