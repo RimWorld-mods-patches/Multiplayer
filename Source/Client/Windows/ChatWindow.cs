@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using LiteNetLib;
 using Multiplayer.Client.Factions;
@@ -160,7 +161,7 @@ namespace Multiplayer.Client
 
             DrawList(
                 "MpSteamAcceptTitle".Translate(),
-                Multiplayer.session.pendingSteam,
+                Multiplayer.session.pendingSteam.Keys.ToList(),
                 SteamFriends.GetFriendPersonaName,
                 ref inRect,
                 ref steamScroll,
@@ -399,23 +400,34 @@ namespace Multiplayer.Client
                 text.AppendLine($"Steam {SteamFriends.GetFriendPersonaName(remote)}");
                 text.AppendLine(remote.ToString());
 
-                if (SteamNetworking.GetP2PSessionState(remote, out P2PSessionState_t state))
+                var handle = HSteamNetConnection.Invalid;
+                if (Multiplayer.LocalServer != null)
                 {
-                    text.AppendLine($"Active: {state.m_bConnectionActive}");
-                    text.AppendLine($"Connecting: {state.m_bConnecting}");
-                    text.AppendLine($"Error: {state.m_eP2PSessionError}");
-                    text.AppendLine($"Using relay: {state.m_bUsingRelay}");
-                    text.AppendLine($"Send queue: {state.m_nBytesQueuedForSend}B  {state.m_nPacketsQueuedForSend} packets");
-                    text.AppendLine($"Remote IP: {state.m_nRemoteIP}:{state.m_nRemotePort}");
+                    var player = Multiplayer.LocalServer.playerManager.Players
+                        .FirstOrDefault(p => p.conn is SteamSocketServerConn s && s.remoteId == remote);
+                    if (player?.conn is SteamSocketServerConn serverConn) handle = serverConn.conn;
+                }
+                if (handle == HSteamNetConnection.Invalid &&
+                    Multiplayer.Client is SteamSocketClientConn clientConn && clientConn.remoteId == remote)
+                    handle = clientConn.conn;
+
+                if (handle != HSteamNetConnection.Invalid &&
+                    SteamP2PIntegration.TryGetRealTimeStatus(handle, out var status))
+                {
+                    text.AppendLine($"State: {status.m_eState}");
+                    text.AppendLine($"Ping: {status.m_nPing}ms");
+                    text.AppendLine($"Quality: {status.m_flConnectionQualityLocal:0.00} local / {status.m_flConnectionQualityRemote:0.00} remote");
+                    text.AppendLine($"Pending: {status.m_cbPendingReliable}B reliable  {status.m_cbPendingUnreliable}B unreliable");
+                    text.AppendLine($"Unacked: {status.m_cbSentUnackedReliable}B");
                 }
                 else
                 {
                     text.AppendLine("No connection");
                 }
 
-                foreach (var pending in Multiplayer.session.pendingSteam)
+                foreach (var pending in Multiplayer.session.pendingSteam.Keys)
                 {
-                    text.AppendLine($"Steam pending {pending}:{SteamFriends.GetFriendPersonaName(remote)}");
+                    text.AppendLine($"Steam pending {pending}:{SteamFriends.GetFriendPersonaName(pending)}");
                 }
 
                 text.AppendLine();

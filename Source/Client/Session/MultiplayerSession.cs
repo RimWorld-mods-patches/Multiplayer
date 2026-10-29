@@ -40,7 +40,9 @@ namespace Multiplayer.Client
 
         public bool desynced;
 
-        public List<CSteamID> pendingSteam = new();
+        // An entry exists exactly while a host accept prompt for that peer is unanswered; the value is the
+        // incoming Steam connection to accept or close on the answer.
+        public Dictionary<CSteamID, HSteamNetConnection> pendingSteam = new();
         public List<CSteamID> knownUsers = new();
 
         public const int MaxMessages = 200;
