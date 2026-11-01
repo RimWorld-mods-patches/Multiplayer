@@ -176,6 +176,7 @@ public class AsyncWorldTimeComp : IExposable, ITickable
 
         TickPatch.currentExecutingCmdIssuedBySelf = cmd.IsIssuedBySelf() && !TickPatch.Simulating;
         TickPatch.currentExecutingCmdType = cmdType;
+        TickPatch.currentExecutingCmdFactionId = cmd.factionId;
 
         PreContext();
         FactionExtensions.PushFaction(null, cmd.GetFaction());
@@ -266,6 +267,7 @@ public class AsyncWorldTimeComp : IExposable, ITickable
             PostContext();
             TickPatch.currentExecutingCmdIssuedBySelf = false;
             TickPatch.currentExecutingCmdType = null;
+            TickPatch.currentExecutingCmdFactionId = ScheduledCommand.NoFaction;
 
             Multiplayer.game.sync.TryAddCommandRandomState(randState);
 

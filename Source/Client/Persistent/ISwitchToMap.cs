@@ -32,7 +32,10 @@ namespace Multiplayer.Client
 
         static void DoSwitchToMap(Window window, Rect rect)
         {
-            if (window is not ISwitchToMap)
+            // The interface marks windows multiplayer authors itself. A caravan encounter instead adopts
+            // vanilla's own dialog, which cannot be made to implement it, so it is recognised by ownership
+            // -- it needs this button for the same reason and should get the same one.
+            if (window is not ISwitchToMap && !Persistent.CaravanEncounterSession.IsAdoptedWindow(window))
                 return;
 
             using (MpStyle.Set(GameFont.Tiny))

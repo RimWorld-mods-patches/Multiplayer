@@ -1,5 +1,7 @@
 using HarmonyLib;
 using Multiplayer.API;
+using Multiplayer.Client.Persistent;
+using Multiplayer.Common;
 using RimWorld;
 using RimWorld.Planet;
 using System.Collections.Generic;
@@ -35,6 +37,16 @@ namespace Multiplayer.Client
         }
 
         public override Map Map => playerNegotiator.Map;
+
+        /// <summary>
+        /// The faction whose time this trade blocks.
+        ///
+        /// Derived rather than stored so saves written before this existed still load. The negotiator is
+        /// the reliable source: for a caravan trade the pawn has no map at all, which is exactly the case
+        /// <see cref="IsCurrentlyPausing"/> used to get wrong.
+        /// </summary>
+        public int PauseOwnerFactionId =>
+            playerNegotiator?.Faction?.loadID ?? PauseDomainRules.NoFaction;
 
         public override bool IsSessionValid => trader != null && playerNegotiator != null;
 
@@ -243,7 +255,22 @@ namespace Multiplayer.Client
             deal.caravanDirty = true;
         }
 
-        public override bool IsCurrentlyPausing(Map map) => map == Map;
+        /// <summary>
+        /// A settlement trade pauses the map it happens on. A caravan trade has no map -- the negotiator
+        /// is travelling, so <see cref="Map"/> is null -- and the old <c>map == Map</c> test therefore
+        /// matched only the world tickable. The world skips its session check unless async time is on, so
+        /// on a default server a caravan trade paused nothing at all while its window sat open.
+        ///
+        /// Falls back to the negotiator's faction domain when there is no map, which covers the caravan
+        /// case without changing settlement trading.
+        /// </summary>
+        public override bool IsCurrentlyPausing(Map map)
+        {
+            if (Map != null)
+                return map == Map;
+
+            return map != null && PauseDomains.IsMapInPauseDomain(map, PauseOwnerFactionId);
+        }
 
         public override FloatMenuOption GetBlockingWindowOptions(ColonistBar.Entry entry)
         {
