@@ -12,6 +12,10 @@ public class HashCodeTranspilerTest
     [Test]
     public void PatchingGameCallerPreservesExistingDictionaryKeys()
     {
+        // Re-enable when the pinned Harmony bundle supports CoreCLR 11.
+        if (Environment.Version.Major == 11)
+            Assert.Ignore("The pinned Harmony bundle's MonoMod does not support CoreCLR 11.");
+
         var key = (new object(), "ingredients");
         var dictionary = new Dictionary<(object, string), string> { [key] = "cached" };
         var tupleHash = key.GetHashCode();
