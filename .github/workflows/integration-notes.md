@@ -20,9 +20,8 @@ Use matching `<date>+<commit>` on both when you use the server zip. Most groups 
 
 Ensure that you have installed:
 
-- [ ] RimWorld **1.6** (build ≥ 1.6.4491)
-- [ ] **Prepatcher** mod from [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=2934420800) (or
-  follow the [manual install](https://github.com/Zetrith/Prepatcher#installation) on GitHub)
+- [ ] RimWorld **1.7**
+- [ ] **Harmony 3** mod from [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077)
 
 ### Install the mod (5 steps)
 
@@ -44,15 +43,15 @@ Ensure that you have installed:
     - macOS: double-click extracts next to the zip (often Downloads) — then move `Multiplayer` into `Mods`.
     - Linux: `unzip` or your archive app, then move `Multiplayer` into `Mods` if needed.
 5. Start RimWorld. In **Mods**:
-    - Enable **Prepatcher** and **Multiplayer [Integration]**.
+    - Enable **Harmony 3** and **Multiplayer [Integration]**.
     - Do not also enable Workshop **Multiplayer** (the one with Steam icon).
-    - Load order (top → bottom): Core → enabled expansions → **Prepatcher** → **Multiplayer [Integration]** → other
+    - Load order (top → bottom): **Harmony 3** → Core → enabled expansions → **Multiplayer [Integration]** → other
       mods.
 
 ### Verify the mod
 
 - [ ] Folder path is `Mods/Multiplayer/` (not `Mods/<wrapper>/Multiplayer/`).
-- [ ] **Prepatcher** and **Multiplayer [Integration]** are enabled; Workshop **Multiplayer** is off.
+- [ ] **Harmony 3** and **Multiplayer [Integration]** are enabled; Workshop **Multiplayer** is off.
 - [ ] Load order matches step 5.
 - [ ] On the Mods screen those two mods show no yellow/red warnings; after **Continue**, the main menu loads normally.
 
@@ -65,8 +64,8 @@ main menu).
 |----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Two Multiplayer entries / Workshop conflicts | Disable Workshop Multiplayer; restart                                                                                                                                                                                               |
 | Mod under a subfolder                        | Path must be `Mods/Multiplayer/` — move the inner folder up                                                                                                                                                                         |
-| Wrong version / won’t load                   | Update RimWorld to 1.6 (≥ 1.6.4491)                                                                                                                                                                                                 |
-| Prepatcher / Multiplayer launch errors       | Resubscribe or reinstall Prepatcher ([Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=2934420800) / [manual install](https://github.com/Zetrith/Prepatcher#installation)); keep it above Multiplayer [Integration] |
+| Wrong version / won’t load                   | Update RimWorld to 1.7                                                                                                                                                                                                 |
+| Harmony / Multiplayer launch errors | Update Harmony 3; disable old Prepatcher builds that supply Harmony 2.4.x |
 | Players can’t join each other                | Same mod zip filename (`<date>+<commit>`) for everyone                                                                                                                                                                              |
 
 ---
@@ -80,9 +79,9 @@ server zip required. Put the server zip only on the machine that runs the headle
 
 Ensure that you have installed:
 
-- [ ] **.NET 8 Runtime** — [Download .NET 8](https://dotnet.microsoft.com/download/dotnet/8.0) (if you hesitate what to
+- [ ] **.NET 10 Runtime** — [Download .NET 10](https://dotnet.microsoft.com/download/dotnet/10.0) (if you hesitate what to
   choose on this page then not the SDK, not ASP.NET); check with `dotnet --list-runtimes`
-  for `Microsoft.NETCore.App 8.x`
+  for `Microsoft.NETCore.App 10.x`
 
 ### Install the server (2 steps)
 
@@ -129,7 +128,7 @@ Other players should wait until step 5.
 
 | What you see                                          | Fix                                                                                      |
 |-------------------------------------------------------|------------------------------------------------------------------------------------------|
-| Headless server won’t start                           | Install .NET 8 Runtime; `dotnet --list-runtimes` shows `Microsoft.NETCore.App 8.x`       |
+| Headless server won’t start                           | Install .NET 10 Runtime; `dotnet --list-runtimes` shows `Microsoft.NETCore.App 10.x`       |
 | Can’t connect / bootstrap UI never opens              | Matching mod zip + stamp; address is `IP:30502`; server still running from the OS folder |
 | Stamp / version mismatch errors                       | Same `<date>+<commit>` on mod zip, server zip, and `modVersion` suffix                   |
 | LAN works, internet friends cannot                    | Forward / allow **UDP 30502** to the server PC (TCP 30502 if the firewall asks)          |

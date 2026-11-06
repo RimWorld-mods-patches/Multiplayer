@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 15
     # '11' is preview-only right now, so let it fail without blocking the
     # release - this leg exists to catch upcoming breaks early, not to gate on
-    # preview-SDK bugs unrelated to this repo's code.
+    # preview SDK/runtime incompatibilities.
     continue-on-error: ${{ matrix.sdk == '11' }}
     strategy:
       matrix:
@@ -86,6 +86,7 @@ jobs:
     # the global.json-pinned major instead of this leg's intended one
     # without anything failing until the logs were read by hand.
     - name: Verify resolved SDK matches this leg's expected major version
+      id: sdk-version
       shell: bash
       run: |
         ACTUAL_MAJOR=$(dotnet --version | cut -d. -f1)
@@ -99,6 +100,7 @@ jobs:
           echo "::error::Resolved .NET SDK major ($ACTUAL_MAJOR) does not match this leg's expected major ($EXPECTED_MAJOR)"
           exit 1
         fi
+        echo "major=$EXPECTED_MAJOR" >> "$GITHUB_OUTPUT"
 
     - name: Restore dependencies
       run: dotnet restore ${{ env.SLN_PATH }}
@@ -106,7 +108,13 @@ jobs:
     - name: Build solution
       run: dotnet build ${{ env.SLN_PATH }} --configuration ${{ matrix.configuration }} --no-restore
 
+    # Exercise the preview runtime as well as its SDK. The test suite checks the
+    # actual test-host major so an installed .NET 10 cannot silently satisfy this leg.
     - name: Run tests
+      env:
+        DOTNET_ROLL_FORWARD: ${{ matrix.sdk == '11' && 'LatestMajor' || 'Minor' }}
+        DOTNET_ROLL_FORWARD_TO_PRERELEASE: ${{ matrix.sdk == '11' && '1' || '0' }}
+        MP_EXPECTED_RUNTIME_MAJOR: ${{ steps.sdk-version.outputs.major }}
       run: dotnet test ${{ env.SLN_PATH }} --configuration ${{ matrix.configuration }} --no-restore --logger "trx;logfilename=TestResults.trx"
 
     # overwrite: true because this name is keyed by matrix values, not run
@@ -202,8 +210,8 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore ${{ env.SLN_PATH }}
 
-    # Multiplayer.csproj copies its build output into Assemblies/ and
-    # AssembliesCustom/ as a post-build step, alongside the static About/,
+    # Multiplayer.csproj copies its build output into 1.7/Assemblies/ and
+    # 1.7/AssembliesCustom/ as a post-build step, alongside the static About/,
     # Defs/, Languages/, and Textures/ content - together these are the
     # complete mod folder.
     - name: Build mod (Release)
@@ -221,6 +229,7 @@ jobs:
       run: |
         cat > artifacts/server/Server/Linux/Server.sh <<'EOF'
         #!/usr/bin/env bash
+        # Run the server beside this script with the supplied arguments.
         set -euo pipefail
         SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
         exec dotnet "$SCRIPT_DIR/Server.dll" "$@"
@@ -233,7 +242,7 @@ jobs:
         sed -i "s/<name>\(.*\)<\/name>\$/<name>\1 [Integration]<\/name>/" About/About.xml
         sed -i "s/<modVersion>.*<\/modVersion>.*\$/<modVersion>${{ steps.stamp.outputs.mod_version }}<\/modVersion>/" About/About.xml
         mkdir -p artifacts/mod/Multiplayer
-        mv About/ Assemblies/ AssembliesCustom/ Defs/ Languages/ Textures/ artifacts/mod/Multiplayer/
+        mv About/ 1.7/ Defs/ Languages/ Textures/ LoadFolders.xml artifacts/mod/Multiplayer/
 
     - name: Create stamped zip archives
       run: |
