@@ -56,6 +56,13 @@ jobs:
         cache: true
         cache-dependency-path: '**/*.csproj'
 
+    # The mod and test host target .NET 10 even when built with the preview SDK.
+    - name: Install .NET 10 for the preview SDK leg
+      if: matrix.sdk == '11'
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        dotnet-version: 10.0.x
+
     - name: Set up .NET (override)
       if: matrix.sdk != 'global.json'
       id: setup_dotnet_override
@@ -175,8 +182,8 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore ${{ env.SLN_PATH }}
 
-    # Multiplayer.csproj copies its build output into Assemblies/ and
-    # AssembliesCustom/ as a post-build step, alongside the static About/,
+    # Multiplayer.csproj copies its build output into 1.7/Assemblies/ and
+    # 1.7/AssembliesCustom/ as a post-build step, alongside the static About/,
     # Defs/, Languages/, and Textures/ content - together these are the
     # complete mod folder.
     - name: Build mod (Release)
@@ -194,6 +201,7 @@ jobs:
       run: |
         cat > artifacts/server/Server/Linux/Server.sh <<'EOF'
         #!/usr/bin/env bash
+        # Run the server beside this script with the supplied arguments.
         set -euo pipefail
         SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
         exec dotnet "$SCRIPT_DIR/Server.dll" "$@"
@@ -203,7 +211,7 @@ jobs:
     - name: Package mod files
       run: |
         mkdir -p artifacts/mod/Multiplayer
-        mv About/ Assemblies/ AssembliesCustom/ Defs/ Languages/ Textures/ artifacts/mod/Multiplayer/
+        mv About/ 1.7/ Defs/ Languages/ Textures/ LoadFolders.xml artifacts/mod/Multiplayer/
 
     # upload-artifact strips exactly the given "path" and keeps everything
     # below it, so pointing at the parent of Multiplayer/ and Server/ (rather

@@ -1,7 +1,7 @@
 # Multiplayer — fork working notes
 
-RimWorld Multiplayer mod. C#, solution at `Source/Multiplayer.sln`. Mod code targets
-`net48`; `Source/Tests` targets `net8.0`; `Source/SourceGen` is `netstandard2.0`.
+RimWorld Multiplayer mod. C#, solution at `Source/Multiplayer.sln`. Mod code and `Source/Tests` target
+`net10.0`; `Source/SourceGen` is `netstandard2.0`.
 
 **This checkout is a maintained fork, not a scratch copy of upstream.** Changes live here
 first and are upstreamed selectively.
