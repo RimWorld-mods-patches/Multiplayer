@@ -5,6 +5,19 @@ namespace Tests;
 public class CoreClrRuntimeTest
 {
     [Test]
+    public void TestHostUsesExpectedRuntimeMajor()
+    {
+        var expected = Environment.GetEnvironmentVariable("MP_EXPECTED_RUNTIME_MAJOR");
+        if (string.IsNullOrEmpty(expected))
+            Assert.Ignore("Runtime verification is configured by the CI matrix.");
+
+        var runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+        TestContext.Progress.WriteLine($"Test host runtime: {runtime}; expected major: {expected}");
+        Assert.That(Environment.Version.Major.ToString(), Is.EqualTo(expected),
+            $"Tests are running on {runtime}");
+    }
+
+    [Test]
     public void StaticConstructorInvokerRestoresDefaultsOnEveryReload()
     {
         var reset = MpReflection.CreateStaticConstructorInvoker(typeof(StaticDefaults));

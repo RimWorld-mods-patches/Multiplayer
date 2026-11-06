@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 15
     # '11' is preview-only right now, so let it fail without blocking the
     # release - this leg exists to catch upcoming breaks early, not to gate on
-    # preview-SDK bugs unrelated to this repo's code.
+    # preview SDK/runtime incompatibilities.
     continue-on-error: ${{ matrix.sdk == '11' }}
     strategy:
       matrix:
@@ -62,13 +62,6 @@ jobs:
         cache: true
         cache-dependency-path: '**/*.csproj'
 
-    # The mod and test host target .NET 10 even when built with the preview SDK.
-    - name: Install .NET 10 for the preview SDK leg
-      if: matrix.sdk == '11'
-      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-      with:
-        dotnet-version: 10.0.x
-
     - name: Set up .NET (override)
       if: matrix.sdk != 'global.json'
       id: setup_dotnet_override
@@ -93,6 +86,7 @@ jobs:
     # the global.json-pinned major instead of this leg's intended one
     # without anything failing until the logs were read by hand.
     - name: Verify resolved SDK matches this leg's expected major version
+      id: sdk-version
       shell: bash
       run: |
         ACTUAL_MAJOR=$(dotnet --version | cut -d. -f1)
@@ -106,6 +100,7 @@ jobs:
           echo "::error::Resolved .NET SDK major ($ACTUAL_MAJOR) does not match this leg's expected major ($EXPECTED_MAJOR)"
           exit 1
         fi
+        echo "major=$EXPECTED_MAJOR" >> "$GITHUB_OUTPUT"
 
     - name: Restore dependencies
       run: dotnet restore ${{ env.SLN_PATH }}
@@ -113,7 +108,13 @@ jobs:
     - name: Build solution
       run: dotnet build ${{ env.SLN_PATH }} --configuration ${{ matrix.configuration }} --no-restore
 
+    # Exercise the preview runtime as well as its SDK. The test suite checks the
+    # actual test-host major so an installed .NET 10 cannot silently satisfy this leg.
     - name: Run tests
+      env:
+        DOTNET_ROLL_FORWARD: ${{ matrix.sdk == '11' && 'LatestMajor' || 'Minor' }}
+        DOTNET_ROLL_FORWARD_TO_PRERELEASE: ${{ matrix.sdk == '11' && '1' || '0' }}
+        MP_EXPECTED_RUNTIME_MAJOR: ${{ steps.sdk-version.outputs.major }}
       run: dotnet test ${{ env.SLN_PATH }} --configuration ${{ matrix.configuration }} --no-restore --logger "trx;logfilename=TestResults.trx"
 
     # overwrite: true because this name is keyed by matrix values, not run
